@@ -1,5 +1,6 @@
 using Oscar
 using Polymake
+using InvertedIndices
 
 struct stackyFan
     fan::Polymake.BigObjectAllocated
@@ -12,7 +13,7 @@ function makeStackyFan(
     stacks::Array{Int64,1})
 
     fan = fulton.NormalToricVariety(INPUT_RAYS=rays, INPUT_CONES=cones)
-    stack_rays = mapslices(encode, fan.RAYS, dims=2)
+    stack_rays = mapslices(encode, fan.INPUT_RAYS, dims=2)
     pairs = map((x,y) -> (x,y), stack_rays, stacks)
     stacks = Dict(pairs)
 
@@ -29,7 +30,7 @@ function getBoxPoints(sf::stackyFan)
 end
 
 function getBoxPoints(cone::Polymake.BigObjectAllocated)
-    gcds = mapslices((x) -> foldl(gcd, x), cone.RAYS, dims=2)
+    gcds = mapslices((x) -> foldl(gcd, x), cone.INPUT_RAYS, dims=2)
     generators = mapslices(
         (x,y) -> div(x, repeat([y], length(x))),
         cone.RAYS,
@@ -38,19 +39,56 @@ function getBoxPoints(cone::Polymake.BigObjectAllocated)
 
 end
 
+function rootConstruction(
+    sf::stackyFan,
+    rays::Array{Int64,2},
+    scalars::Array{Int64,1})
+
+    old_rays = keys(sf.stacks)
+    old_stacks = values(sf.stacks)
+    to_replace = mapslices(encode, rays, dims=2)
+    indices_to_replace = findall(in(to_replace), old_rays)
+
+    rays_to_keep = old_rays[Not(indices_to_update),:]
+    stacks_to_keep = old_stacks[Not(indices_to_update),:]
+    new_rays = scale(scalars, rays)
+    updated_stacks = map(
+        (x,y) -> div(x,y),
+        old_stacks[indices_to_update,:],
+        scalars)
+
+    all_rays = decode([rays_to_keep; mapslices(encode, new_rays, dims=2)])
+    all_stacks = [stacks_to_keep; updated_stacks]
+
+    old_cones = convertIncidenceMatrix(sf.fan.INPUT_CONES)
+    for cone in old_cones:
+        temp = mapslices(encode, sf.fan.INPUT_RAYS[cone,:], dims=2)
+        for i in length(cone):
+            if cone[i] in(indices_to_replace):
+                cone[i] = findall(x->x==temp[i], to_replace)[1]
+                    +length(rays_to_keep)
+
+    return(makeStackyFan(all_rays, old_cones, all_stacks))
+end
+
+function getCones(sf::stackyFan)
+    formatted = convertIncidenceMatrix(sf.fan.INPUT_CONES)
+    cones = map((x) -> Polymake.polytope.Cone(
+        INPUT_RAYS=sf.fan.RAYS[x,:]), formatted)
+    return(cones)
+end
+
+
+
+
+
+
 function encode(objects::Polymake.VectorAllocated{Polymake.Rational})
     return(foldl((x,y) -> string(x, ',', y), objects))
 end
 
-function ugly_gcd(first::Polymake.RationalAllocated, second::Polymake.RationalAllocated)
-    
-end
-
-function getCones(sf::stackyFan)
-    formatted = convertIncidenceMatrix(sf.fan.MAXIMAL_CONES)
-    cones = map((x) -> Polymake.polytope.Cone(
-        INPUT_RAYS=sf.fan.RAYS[x,:]), formatted)
-    return(cones)
+function decode(object::Array{String,2})
+    return(map((x) -> parse(Int64, x), object))
 end
 
 function convertIncidenceMatrix(A)
