@@ -68,7 +68,12 @@ end
 function stackyBlowup(sf::stackyFan, cone::Array{Int64,1}, ray::Array{Int64,1})
     blowup = toric_blowup(cone, sf.fan, ray)
     sf.stacks[encode(ray)] = 1
+
+    return(stackyFan(blowup, sf.stacks))
 end
+
+
+
 
 function getCones(sf::stackyFan)
     formatted = convertIncidenceMatrix(sf.fan.CONES)
@@ -76,11 +81,6 @@ function getCones(sf::stackyFan)
         INPUT_RAYS=sf.fan.RAYS[x,:]), formatted)
     return(cones)
 end
-
-
-
-
-
 
 function encode(objects::Polymake.VectorAllocated{Polymake.Rational})
     return(foldl((x,y) -> string(x, ',', y), objects))
