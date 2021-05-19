@@ -30,7 +30,7 @@ function makeStackyFan(
     pairs = map((x,y) -> (x,y), stack_rays, scalars)
     stacks = Dict(pairs)
 
-    return(StackyFan(fan, scalars, sstacks))
+    return(StackyFan(fan, scalars, stacks))
 end
 
 function encode(objects::Polymake.VectorAllocated{Polymake.Rational})
