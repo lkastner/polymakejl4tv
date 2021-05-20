@@ -391,7 +391,22 @@ function extremalCones(S, rayMatrix, distinguished)
     return maxCones
 end
 
-function interiorPoints(C)
+"""
+
+    interiorPoints(::Polymake.BigObjectAllocated)
+
+    Finds all interior lattice points contained in the fundamental region of a given cone. When multiple interior lattice points lie along the same ray, only the point closest to the origin is returned.
+
+# Examples
+```jldoctest StackyFan
+julia> C=Polymake.polytope.Cone(INPUT_RAYS=[1 2; 2 1])
+
+julia> interiorPoints(C)
+[[ 1 ,  1 ]]
+
+"""
+
+function interiorPoints(C::Polymake.BigObjectAllocated)
     rayMatrix=Array(Polymake.common.primitive(C.RAYS))
     l=size(rayMatrix,1)
     dim=size(rayMatrix,2)
@@ -425,5 +440,65 @@ function interiorPoints(C)
             append!(validPoints,[point])
         end
     end
-    return Array(vcat(validPoints...))
+    return validPoints
+end
+
+function findStackyPoint(ray, cone, rayMatrix, stack)
+    # ray is the given "black" lattice point
+    # stackyCone and rayMatrix are the rays of the cone
+    # which should also contain information about the red lattice
+    # Returns the first "red" lattice point along the given ray
+    # Given the rays of stackyCone, \rho_i and \delta_i, find
+    # \psi = a_1 \rho_1 + ... + b_1 \delta_1 + ... + b_n \delta_n
+    # and return a_1, ..., b_1, ..., b_n, and the multiple of ray
+    
+    # Apply stacky structure
+    rays = getConeRays(cone, rayMatrix) .* transpose(stack)
+    # Find integer solutions
+    M = hcat(rays, ray)
+    S = MatrixSpace(ZZ, size(M,1), size(M,2))
+    (dim, c) = nullspace(S(M))
+    # Get smallest integer multiple
+    coef = nothing
+    for col in 1:size(c, 2)
+        if (c[size(c, 1), col] != 0)
+            coef = vec(Matrix{Int}(transpose(c[1:size(c,1), col]) * sign(-c[size(c, 1), col])))
+            coef[size(coef, 2)] = abs(coef[size(coef, 2)])
+        end
+    end
+    # Return the coefficients of the rays of the cone, in the same order
+    return coef
+end
+
+"""
+
+    minimalByLex(::Array{Array{Int64,1},1})
+
+    Given a list of vectors of equal length, returns the minimal vector with respect to lexicographic ordering.
+
+# Examples
+```jldoctest StackyFan
+julia> A=[[1,1,1],[2,1,3],[0,5,4]]
+
+julia> minimalByLex(A)
+[ 0 ,  5 ,  4 ]
+
+"""
+
+function minimalByLex(A::Array{Array{Int64,1},1})
+    l=size(A,1)
+    minimal=A[1]
+    d=size(minimal,1)
+    for i in 2:l
+        test=A[i]
+        for j in 1:d
+            if minimal[j]<test[j]
+                break
+            elseif minimal[j]>test[j]
+                minimal=test
+                break
+            end
+        end
+    end
+    return minimal
 end
