@@ -2,6 +2,7 @@ using Oscar
 using Polymake
 using InvertedIndices
 using Combinatorics
+using LinearAlgebra
 
 """
 
@@ -212,7 +213,7 @@ function convertIncidenceMatrix(A::Polymake.IncidenceMatrixAllocated{Polymake.No
         end
         append!(out,[members])
     end
-    return convert.(Array{Int64, 1}, out)
+    return convert(Array{Array{Int64,1},1}, out)
 end
 
 """
@@ -303,10 +304,10 @@ true
 
 function distinguishedAndMultiplicity(cone::Array{Int64,1},rayMatrix::Array{Int64,2},dist::Array{Int64,1})
     l=size(rayMatrix,1)
-    if dot(convertToIncidence(cone,l),dist) > 0
+    if dot(convertToIncidence(cone,l),dist) > 0 #check distinguished
         C=coneConvert(cone,rayMatrix)
         mult=coneMultiplicity(C)
-        if mult > 1
+        if mult > 1 #check multiplicity
             return true
         else
             return false
@@ -407,7 +408,7 @@ julia> interiorPoints(C)
 """
 
 function interiorPoints(C::Polymake.BigObjectAllocated)
-    rayMatrix=Array(Polymake.common.primitive(C.RAYS))
+    rayMatrix=Array(Polymake.common.primitive(C.RAYS)) #find the ray matrix of the input cone
     l=size(rayMatrix,1)
     dim=size(rayMatrix,2)
     if rank(rayMatrix)<l
@@ -415,7 +416,7 @@ function interiorPoints(C::Polymake.BigObjectAllocated)
     end
     subsets=collect(powerset([1:l;]))
     vertices=[]
-    for elt in subsets
+    for elt in subsets #vertices of the fundamental region are in correspondence with subsets of the generators of the cone, by summing the generators in a subset to obtain a vertex
         vert=zeros(Polymake.Rational,1,dim)
         for i in 1:l
             if i in elt
@@ -426,15 +427,14 @@ function interiorPoints(C::Polymake.BigObjectAllocated)
     end
     V=vcat(vertices...)
     VH=hcat(ones(Polymake.Rational,size(V,1)),V)
-    P=Polymake.polytope.Polytope(POINTS=VH)
-    #print(P.POINTS)
+    P=Polymake.polytope.Polytope(POINTS=VH) #make a Polymake polytope object from the vertices of the fundamental region found in the last step
     if size(P.INTERIOR_LATTICE_POINTS,1)==0
         return nothing
     end
-    intPoints=Array(P.INTERIOR_LATTICE_POINTS)[:,2:(dim+1)]
+    intPoints=Array(P.INTERIOR_LATTICE_POINTS)[:,2:(dim+1)] #find all the interior lattice points
     validPoints=[]
     #return intPoints
-    for i in 1:size(intPoints,1)
+    for i in 1:size(intPoints,1) #throw out all points that are integer multiples of other points
         point=intPoints[i,:]
         if gcd(point)==1
             append!(validPoints,[point])
@@ -442,6 +442,10 @@ function interiorPoints(C::Polymake.BigObjectAllocated)
     end
     return validPoints
 end
+
+"""
+    findStackyPoint is superseded by coneRayDecomposition and should not be used.
+"""
 
 function findStackyPoint(ray, cone, rayMatrix, stack)
     # ray is the given "black" lattice point
@@ -453,7 +457,7 @@ function findStackyPoint(ray, cone, rayMatrix, stack)
     # and return a_1, ..., b_1, ..., b_n, and the multiple of ray
     
     # Apply stacky structure
-    rays = getConeRays(cone, rayMatrix) .* transpose(stack)
+    rays = rowMinors(rayMatrix,cone) .* transpose(stack)
     # Find integer solutions
     M = hcat(rays, ray)
     S = MatrixSpace(ZZ, size(M,1), size(M,2))
@@ -501,4 +505,38 @@ function minimalByLex(A::Array{Array{Int64,1},1})
         end
     end
     return minimal
+end
+
+"""
+    coneRayDecomposition(::Array{Int64,1},::Array{Int64,2},::Array{Int64,1},::Array{Int64,1})
+
+    This function takes in a cone (a vector of indices of cone generators in rayMatrix), a ray, and a stacky structure for rayMatrix. It first multiplies all generators of the cone by their stacky values, and then finds an expression for the ray as a sum of these stacky generators. The output is a vector of coefficients of the above representation in terms of the rays in rayMatrix, with zeros as coefficients for all rays not in the given cone.
+
+# Examples
+```jldoctest StackyFan
+julia> coneRayDecomposition([1,2,3],[3 5 7; 8 16 9;2 1 3;1 1 1],[2,2,3],[1,1,1,1])
+[ 6 ,  5 ,  52 ,  0 ]
+
+"""
+
+function coneRayDecomposition(cone,rayMatrix,ray,stack)
+    stackMatrix=diagm(stack)*rayMatrix # multiply all rays by stack values
+    coneRays=rowMinors(stackMatrix,cone) # find the (stackified) rays in the given cone
+    if rank(coneRays)<size(coneRays,1)
+        error("The given cone is not simplicial.")
+    end
+    B=Polymake.common.null_space(hcat(transpose(coneRays),-ray)) # Express the input ray in terms of the stackified cone generators
+    N=convert(Array{Int64,1},vec(B))
+    if size(N,1)==0
+        error("The given ray is not in the span of the cone generators.")
+    end
+    if N[end]<0 #since the nullspace has arbitrary sign, fix it so the coefficients are all positive
+        N*=-1
+    end
+    pop!(N)
+    out=zeros(Int64,size(rayMatrix,1)) 
+    for i in 1:size(N,1)#rewrite the coefficients vector in terms of all the rays in rayMatrix, by padding with zeros when appropriate.
+        out[cone[i]]=N[i] 
+    end
+    return out
 end
