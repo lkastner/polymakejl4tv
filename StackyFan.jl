@@ -83,6 +83,10 @@ function encode(objects::Polymake.VectorAllocated{Polymake.Rational})
     return(foldl((x,y) -> string(x, ',', y), objects))
 end
 
+function encode(objects::Array{Int64,1})
+    return(foldl((x,y) -> string(x, ',', y), objects))
+end
+
 
 """
     decode(::Array{String,2})
@@ -141,7 +145,7 @@ end
 """
     rootConstructionDistinguishedIndices(::StackyFan, ::Array{Int64, 1}, ::Array{Int64, 1})
 
-    Given a fan, the indices of the distinguished rays in the fan rays, and
+    Given a fan, the indices of the distinguished rays in the fan rays (as an incidence matrix), and
 a set of scalars corresponding to the rays of the fan, performs a root 
 construction on the fan by multiplying the stack scalars by the given values. 
 
@@ -153,20 +157,22 @@ and does not modify the input.
 julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0 0;1 1 0;1 0 1;1 1 1],INPUT_CONES=[[0,1,2],[1,2,3]])
 julia> SX = StackyFan(X, [2,3,5,7])
 
-julia> root = rootConstructionDistinguishedIndices(SX, [2, 3], [4, 2])
+julia> root = rootConstructionDistinguishedIndices(SX, [0,1,1,0], [4, 2])
 StackyFan(Polymake.BigObjectAllocated(Ptr{Nothing} @0x00007ffe1c00bfa0), [2, 12, 10, 7], Dict("1,1,1" => 7, "1,1,0" => 12, "1,0,1" => 10, "1,0,0" => 2))
 julia> root.scalars
 [2, 12, 10, 7]
 """
 function rootConstructionDistinguishedIndices(
     sf::StackyFan,
-    rayIndices::Array{Int64, 1},
+    distIndices::Array{Int64, 1},
     scalars::Array{Int64, 1})
     
     numRays = size(sf.fan.RAYS, 1)
     fullScalars = fill(1, numRays)
-    for i in 1:length(rayIndices)
-        fullScalars[rayIndices[i]] = scalars[i]
+    for i in 1:length(numRays)
+        if distIndices[i]==1
+            fullScalars[i] = scalars[i]
+        end
     end
     # Multiply the scalars of the fan by the given values
     return rootConstruction(sf, fullScalars)
@@ -228,12 +234,94 @@ function rootConstructionDistinguished(
     return StackyFan(sf.fan, newScalars)
 end
 
+function starSubdivision(X::Polymake.BigObjectAllocated, v::Array{Int64, 1})
+    minimalCone = findMinimalCone(X, v)
+    s = [i - 1 for i in minimalCone]
+    v = transpose(v)
+    return toric_blowup(s, X, v)
+end
+
+"""
+
+    toric_blowup(::Union{AbstractSet,AbstractVector},::Polymake.BigObjectAllocated,::AbstractVector)
+
+    Takes a normal toric variety X, a set s corresponding to a subset of rays of X, and a (optional) polymake vector,
+    v, blow up X at v. If v is not provided, blow up X at the barycenter of s.
+
+"""
+
+function toric_blowup(s, X, v)
+    if size(v,2)==1
+         v=transpose(v)
+    end
+    s = [i + 1 for i in s]
+    if v==nothing
+        v=findBarycenter(s,X)
+    end
+    coneList = convertIncidenceMatrix(X.MAXIMAL_CONES)
+    # Extracting the indices of all the cones in X that contains the set of rays s
+    starIndex = findall((t) -> all(((i) -> i in t).(s)), coneList)
+    star = [coneList[i] for i in starIndex]
+    rayMatrix = X.RAYS
+    
+    lattice = X.HASSE_DIAGRAM
+    faces = @Polymake.convert_to Array{Set{Int}} lattice.FACES
+    
+    # Get all the subcones of X that is contained in one of the cones in star and has the same rank
+    clStar = []
+    # Iterate over star
+    for t in star
+        # Get the rank of t
+        c = rank(Array(rowMinors(rayMatrix, t))) - 1
+        # Get all the subcones of X with rank c
+        rank_c_subcone_indices = @Polymake.convert_to Array{Int} Polymake.graph.nodes_of_rank(lattice,c)
+        rank_c_subcones = [faces[i + 1] for i in rank_c_subcone_indices]
+        # Iterate over rank_c_subcones, and put the cones that is contained in t into clStar
+        for cone in rank_c_subcones
+            new_cone = [i+1 for i in cone]
+            if all((i -> i in t).(new_cone))
+                push!(clStar, new_cone)
+            end
+        end
+    end
+    clStar = unique(clStar)
+    
+    n = size(rayMatrix, 1) + 1
+    # Filter out the cones in star from conelist
+    coneList = filter(x -> !(x in star), coneList)
+    
+    if length(s) == 1
+        # If s consists of a single ray, find all the cones in clStar that does not contain s
+        newCones = []
+        for t in clStar
+            if !(s[1] in t)
+                push!(newCones, sort(push!(t, s[1])))
+            end
+        end
+        # return newCones plus coneList
+        finalCones = [[i - 1 for i in cone] for cone in append!(coneList, newCones)]
+        return Polymake.fulton.NormalToricVariety(INPUT_RAYS = Array(X.RAYS), INPUT_CONES = finalCones)
+    end
+    newCones = []
+    for t in clStar
+        # Find all the cones in clStar that does not contain at least one ray in s
+        # QUESTION: Why seperate this from the one element case? Any won't work with one element list?
+        if any(((i) -> !(i in t)).(s))
+            push!(newCones, push!(t, n))
+        end
+    end
+    # return newCones plus coneList
+    finalRays = vcat((X.RAYS),v)
+    finalCones = [[i - 1 for i in cone] for cone in append!(coneList, newCones)]
+    return Polymake.fulton.NormalToricVariety(INPUT_RAYS = finalRays, INPUT_CONES = finalCones)
+end
 
 function stackyBlowup(sf::StackyFan, cone::Array{Int64,1}, ray::Array{Int64,1})
     blowup = toric_blowup(cone, sf.fan, ray)
     sf.stacks[encode(ray)] = 1
+    
 
-    return(StackyFan(blowup, sf.stacks))
+    return(StackyFan(blowup,push!(sf.scalars,1), sf.stacks))
 end
 
 """
