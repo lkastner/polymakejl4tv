@@ -169,7 +169,7 @@ function rootConstructionDistinguishedIndices(
     
     numRays = size(sf.fan.RAYS, 1)
     fullScalars = fill(1, numRays)
-    for i in 1:length(numRays)
+    for i in 1:numRays
         if distIndices[i]==1
             fullScalars[i] = scalars[i]
         end
@@ -243,12 +243,44 @@ end
 
 """
 
+    findBarycenter(::Union{AbstractSet,AbstractVector},::Polymake.BigObjectAllocated)
+
+    Takes a normal toric variety X and a set s corresponding to a subset of rays of X, and outputs a polymake vector
+    corresponding to the barycenter of those rays.
+
+# Examples
+```jldoctest makeSmoothWithDependencies
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0;1 1; 0 1],INPUT_CONES=[[0,1],[1,2]])
+
+julia> s=[1,2]
+
+julia> findBarycenter(s,X)
+pm::Matrix<pm::Integer>
+2 1
+
+"""
+
+function findBarycenter(s::Union{AbstractSet,AbstractVector},X::Polymake.BigObjectAllocated)
+    rays = rowMinors(Array(X.RAYS), s)
+    dim=size(rays,2)
+    bary=zeros(Polymake.Rational,dim,1)
+    for i in 1:size(rays,1)
+        bary+=rays[i,:]
+    end
+    bary=Polymake.common.primitive(transpose(bary))
+    return bary
+end
+
+"""
+
     toric_blowup(::Union{AbstractSet,AbstractVector},::Polymake.BigObjectAllocated,::AbstractVector)
 
     Takes a normal toric variety X, a set s corresponding to a subset of rays of X, and a (optional) polymake vector,
     v, blow up X at v. If v is not provided, blow up X at the barycenter of s.
 
 """
+
+
 
 function toric_blowup(s, X, v)
     if size(v,2)==1
