@@ -28,24 +28,27 @@ struct StackyFan
         rays::Array{Int64, 2},
         cones::Array{Array{Int64, 1}, 1},
         scalars::Array{Int64, 1}) = makeStackyFan(rays, cones, scalars)
+    StackyFan(
+        fan::Polymake.BigObjectAllocated,
+        scalars::Array{Int64, 1}) = addStackStructure(fan, scalars)
 end
 
 ## Helper functions
 
 """
-
     makeStackyFan(::Array{Int64,2},::Array{Array{Int64,1},1},::Array{Int64,1}))
 
     Function to generate a stacky fan from a matrix representing rays as row vectors, a vector of vectors representing the rays contained in each cone, and a vector of stacky values to be assigned the rays.
-
 """
-
 function makeStackyFan(
-    rays::Array{Int64,2},
+    rays::Array{<:Number,2},
     cones::Array{Array{Int64,1},1},
     scalars::Array{Int64,1})
 
+    # Construct a normal fan from the given rays and cones
     fan = fulton.NormalToricVariety(INPUT_RAYS=rays, INPUT_CONES=cones)
+    
+    # Construct the dictionary
     stack_rays = mapslices(encode, fan.RAYS, dims=2)
     pairs = map((x,y) -> (x,y), stack_rays, scalars)
     stacks = Dict(pairs)
@@ -53,10 +56,39 @@ function makeStackyFan(
     return(StackyFan(fan, scalars, stacks))
 end
 
+"""
+    addStackStructure(::Polymake.BigObjectAllocated, ::Array{Int64, 1})
+
+    Function to generate a stacky fan from a given fan and a set of scalars.
+"""
+function addStackStructure(
+    fan::Polymake.BigObjectAllocated,
+    scalars::Array{Int64, 1})
+    
+    # Construct the dictionary
+    stack_rays = mapslices(encode, fan.RAYS, dims=2)
+    pairs = map((x,y) -> (x,y), stack_rays, scalars)
+    stacks = Dict(pairs)
+
+    return(StackyFan(fan, scalars, stacks))
+end
+
+"""
+    encode(::Polymake.VectorAllocated{Polymake.Rational})
+
+    Internal function that converts a Polymake vector, representing a ray in the fan,
+to a string in order to allow for hashing for the dictionary.
+"""
 function encode(objects::Polymake.VectorAllocated{Polymake.Rational})
     return(foldl((x,y) -> string(x, ',', y), objects))
 end
 
+
+"""
+    decode(::Array{String,2})
+
+    Unused
+"""
 function decode(object::Array{String,2})
     return(map((x) -> parse(Int64, x), object))
 end
@@ -79,45 +111,123 @@ function getMultiplicities(sf::StackyFan)
     return(map((x,y) -> (x,y), cones, map(coneMultiplicity, cones)))
 end
 
+"""
+    rootConstruction(::StackyFan, ::Array{Int64, 1})
+
+    Given a fan and a set of scalars corresponding to the rays of the fan,
+performs a root construction on the fan by multiplying the stack scalars
+by the given values. 
+
+    rootConstruction returns a new StackyFan object, and does not modify the input.
+
+# Examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0 0;1 1 0;1 0 1;1 1 1],INPUT_CONES=[[0,1,2],[1,2,3]])
+julia> SX = StackyFan(X, [2,3,5,7])
+
+julia> root = rootConstruction(SX, [1, 4, 2, 1])
+StackyFan(Polymake.BigObjectAllocated(Ptr{Nothing} @0x00007ffe14f4ca10), [2, 12, 10, 7], Dict("1,1,1" => 7, "1,1,0" => 12, "1,0,1" => 10, "1,0,0" => 2))
+julia> root.scalars
+[2, 12, 10, 7]
+"""
 function rootConstruction(
     sf::StackyFan,
-    rays::Array{Int64,2},
-    scalars::Array{Int64,1})
-
-    encoded_rays = mapslices(encode, rays, dims=2)
-    for i in length(encoded_rays)
-        ray = encoded_rays[i]
-        scalar = scalars[i]
-        current_stack = sf.stacks[ray]
-        sf.stacks[ray] = current_stack * scalar
-    end
-    return(sf)
-    # old_rays = keys(sf.stacks)
-    # old_stacks = values(sf.stacks)
-    # to_replace = mapslices(encode, rays, dims=2)
-    # indices_to_replace = findall(in(to_replace), old_rays)
-    #
-    # rays_to_keep = old_rays[Not(indices_to_update),:]
-    # stacks_to_keep = old_stacks[Not(indices_to_update),:]
-    # new_rays = scale(scalars, rays)
-    # updated_stacks = map(
-    #     (x,y) -> div(x,y),
-    #     old_stacks[indices_to_update,:],
-    #     scalars)
-    #
-    # all_rays = decode([rays_to_keep; mapslices(encode, new_rays, dims=2)])
-    # all_stacks = [stacks_to_keep; updated_stacks]
-    #
-    # old_cones = convertIncidenceMatrix(sf.fan.INPUT_CONES)
-    # for cone in old_cones:
-    #     temp = mapslices(encode, sf.fan.INPUT_RAYS[cone,:], dims=2)
-    #     for i in length(cone):
-    #         if cone[i] in(indices_to_replace):
-    #             cone[i] = findall(x->x==temp[i], to_replace)[1]
-    #                 +length(rays_to_keep)
-    #
-    # return(makeStackyFan(all_rays, old_cones, all_stacks))
+    scalars::Array{Int64, 1})
+    
+    # Multiply the scalars of the fan by the given values
+    return StackyFan(sf.fan, sf.scalars .* scalars)
 end
+
+"""
+    rootConstructionDistinguishedIndices(::StackyFan, ::Array{Int64, 1}, ::Array{Int64, 1})
+
+    Given a fan, the indices of the distinguished rays in the fan rays, and
+a set of scalars corresponding to the rays of the fan, performs a root 
+construction on the fan by multiplying the stack scalars by the given values. 
+
+    rootConstructionDistinguishedIndices returns a new StackyFan object,
+and does not modify the input.
+
+# Examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0 0;1 1 0;1 0 1;1 1 1],INPUT_CONES=[[0,1,2],[1,2,3]])
+julia> SX = StackyFan(X, [2,3,5,7])
+
+julia> root = rootConstructionDistinguishedIndices(SX, [2, 3], [4, 2])
+StackyFan(Polymake.BigObjectAllocated(Ptr{Nothing} @0x00007ffe1c00bfa0), [2, 12, 10, 7], Dict("1,1,1" => 7, "1,1,0" => 12, "1,0,1" => 10, "1,0,0" => 2))
+julia> root.scalars
+[2, 12, 10, 7]
+"""
+function rootConstructionDistinguishedIndices(
+    sf::StackyFan,
+    rayIndices::Array{Int64, 1},
+    scalars::Array{Int64, 1})
+    
+    numRays = size(sf.fan.RAYS, 1)
+    fullScalars = fill(1, numRays)
+    for i in 1:length(rayIndices)
+        fullScalars[rayIndices[i]] = scalars[i]
+    end
+    # Multiply the scalars of the fan by the given values
+    return rootConstruction(sf, fullScalars)
+end
+
+"""
+    rootConstructionDistinguished(
+        ::StackyFan, 
+        ::Polymake.Matrix{Polymake.Rational},
+        ::Array{Int64, 1})
+
+    Given a fan, a set of distinguished rays, and a set of scalars of equal size,
+performs a root construction on the fan on the distinguished rays by multiplying 
+the stack scalars by the given values.
+
+    rootConstructionDistinguished returns a new StackyFan object, 
+and does not modify the input.
+
+# Examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0 0;1 1 0;1 0 1;1 1 1],INPUT_CONES=[[0,1,2],[1,2,3]])
+julia> SX = StackyFan(X, [2,3,5,7])
+julia> distinguished = X.RAYS[[2,3],:]
+pm::Matrix<pm::Rational>
+1 1 0
+1 0 1
+
+julia> root = rootConstructionDistinguished(SX, distinguished, [4, 2])
+StackyFan(Polymake.BigObjectAllocated(Ptr{Nothing} @0x00007ffe1c00bfa0), [2, 12, 10, 7], Dict("1,1,1" => 7, "1,1,0" => 12, "1,0,1" => 10, "1,0,0" => 2))
+julia> root.scalars
+[2, 12, 10, 7]
+"""
+function rootConstructionDistinguished(
+    sf::StackyFan,
+    rays::Polymake.Matrix{Polymake.Rational},
+    scalars::Array{Int64, 1})
+    
+    # Check that the rays and scalars are the same size
+    #if (size(rays, 1) != length(scalars))
+    #    error("Inputs are not of equal size")
+    #end
+    
+    encoded_rays = mapslices(encode, rays, dims=2)
+    # Make a copy of the dictionary
+    newStacks = copy(sf.stacks)
+    for i in 1:length(encoded_rays)
+        ray = encoded_rays[i]
+        # Multiply the scalar of the corresponding ray
+        newStacks[ray] *= scalars[i]
+    end
+    
+    # Convert the dictionary to an array of scalars matching the indices
+    #newScalars = mapslices(ray -> newStacks[encode(ray)], sf.fan.RAYS, dims=2)
+    newScalars = Array{Int64, 1}()
+    for i in 1:size(SX.fan.RAYS, 1)
+        push!(newScalars, newStacks[encode(sf.fan.RAYS[i,:])])
+    end
+    
+    return StackyFan(sf.fan, newScalars)
+end
+
 
 function stackyBlowup(sf::StackyFan, cone::Array{Int64,1}, ray::Array{Int64,1})
     blowup = toric_blowup(cone, sf.fan, ray)
