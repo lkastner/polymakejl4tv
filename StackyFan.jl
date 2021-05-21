@@ -15,6 +15,11 @@ using LinearAlgebra
 
 """
 
+function printn(A)
+    print(A)
+    print("\n")
+end
+
 struct StackyFan
     fan::Polymake.BigObjectAllocated
     scalars::Array{Int64, 1}
@@ -261,14 +266,14 @@ pm::Matrix<pm::Integer>
 """
 
 function findBarycenter(s::Union{AbstractSet,AbstractVector},X::Polymake.BigObjectAllocated)
-    rays = rowMinors(Array(X.RAYS), s)
+    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
+    rays = rowMinors(rayMatrix, s)
     dim=size(rays,2)
-    bary=zeros(Polymake.Rational,dim,1)
+    bary=zeros(Int64,dim,1)
     for i in 1:size(rays,1)
         bary+=rays[i,:]
     end
-    bary=Polymake.common.primitive(transpose(bary))
-    return bary
+    return vec(bary)
 end
 
 """
@@ -532,12 +537,11 @@ true
 
 """
 
-function distinguishedAndMultiplicity(cone::Array{Int64,1},rayMatrix::Array{Int64,2},dist::Array{Int64,1})
+function distinguishedAndIntPoint(cone::Array{Int64,1},rayMatrix::Array{Int64,2},dist::Array{Int64,1})
     l=size(rayMatrix,1)
     if dot(convertToIncidence(cone,l),dist) > 0 #check distinguished
         C=coneConvert(cone,rayMatrix)
-        mult=coneMultiplicity(C)
-        if mult > 1 #check multiplicity
+        if interiorPoints(C)!=nothing #check interior point
             return true
         else
             return false
@@ -638,7 +642,8 @@ julia> interiorPoints(C)
 """
 
 function interiorPoints(C::Polymake.BigObjectAllocated)
-    rayMatrix=Array(Polymake.common.primitive(C.RAYS)) #find the ray matrix of the input cone
+    rayMatrix=Array(Polymake.common.primitive(C.RAYS))
+    print(rayMatrix)#find the ray matrix of the input cone
     l=size(rayMatrix,1)
     dim=size(rayMatrix,2)
     if rank(rayMatrix)<l
