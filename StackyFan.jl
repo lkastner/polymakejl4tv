@@ -175,7 +175,7 @@ function rootConstructionDistinguishedIndices(
     numRays = size(sf.fan.RAYS, 1)
     fullScalars = fill(1, numRays)
     for i in 1:numRays
-        if distIndices[i]==1
+        if distIndices[i]==1 && scalars[i] != 0
             fullScalars[i] = scalars[i]
         end
     end
