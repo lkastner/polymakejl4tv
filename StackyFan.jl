@@ -277,6 +277,27 @@ function findBarycenter(s::Union{AbstractSet,AbstractVector},X::Polymake.BigObje
 end
 
 """
+    findBarycenter(::Union{AbstractSet,AbstractVector},::StackyFan)
+
+    Takes a toric stack X and a set s corresponding to a subset of rays of X, and outputs a polymake vector
+    corresponding to the barycenter of those rays.
+
+# Examples
+"""
+function findBarycenter(s::Union{AbstractSet,AbstractVector},SX::StackyFan)
+    rayMatrix=convert(Array{Int64,2}, Array(Polymake.common.primitive(SX.fan.RAYS)))
+    # Multiply the rays by their stacky values
+    stackMatrix = diagm(SX.scalars) * rayMatrix
+    rays = rowMinors(stackMatrix, s)
+    dim=size(rays,2)
+    bary=zeros(Int64,dim,1)
+    for i in 1:size(rays,1)
+        bary+=rays[i,:]
+    end
+    return vec(bary)
+end
+
+"""
 
     toric_blowup(::Union{AbstractSet,AbstractVector},::Polymake.BigObjectAllocated,::AbstractVector)
 
