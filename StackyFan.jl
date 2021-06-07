@@ -54,9 +54,11 @@ function makeStackyFan(
     fan = fulton.NormalToricVariety(INPUT_RAYS=rays, INPUT_CONES=cones)
     
     # Construct the dictionary
-    stack_rays = mapslices(encode, fan.INPUT_RAYS, dims=2)
+    stack_rays = mapslices(encode, fan.RAYS, dims=2)
     pairs = map((x,y) -> (x,y), stack_rays, scalars)
     stacks = Dict(pairs)
+    
+    newscalars
 
     return(StackyFan(fan, scalars, stacks))
 end
@@ -71,7 +73,7 @@ function addStackStructure(
     scalars::Array{Int64, 1})
     
     # Construct the dictionary
-    stack_rays = mapslices(encode, fan.INPUT_RAYS, dims=2)
+    stack_rays = mapslices(encode, Polymake.common.primitive(fan.RAYS), dims=2)
     pairs = map((x,y) -> (x,y), stack_rays, scalars)
     stacks = Dict(pairs)
 
@@ -90,6 +92,21 @@ end
 
 function encode(objects::Array{Int64,1})
     return(foldl((x,y) -> string(x, ',', y), objects))
+end
+
+function encode(objects::Polymake.VectorAllocated{Polymake.Integer})
+    return(foldl((x,y) -> string(x, ',', y), objects))
+end
+
+function stackyWeights(sf::StackyFan)
+    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(sf.fan.RAYS)))
+    rayList=slicematrix(rayMatrix)
+    out=Int64[]
+    for ray in rayList
+        stack=sf.stacks[encode(ray)]
+        push!(out,stack)
+    end
+    return out
 end
 
 
@@ -172,7 +189,7 @@ function rootConstructionDistinguishedIndices(
     distIndices::Array{Int64, 1},
     scalars::Array{Int64, 1})
     
-    numRays = size(sf.fan.INPUT_RAYS, 1)
+    numRays = size(sf.fan.RAYS, 1)
     fullScalars = fill(1, numRays)
     for i in 1:numRays
         if distIndices[i]==1 && scalars[i] != 0
@@ -232,8 +249,8 @@ function rootConstructionDistinguished(
     # Convert the dictionary to an array of scalars matching the indices
     #newScalars = mapslices(ray -> newStacks[encode(ray)], sf.fan.RAYS, dims=2)
     newScalars = Array{Int64, 1}()
-    for i in 1:size(SX.fan.INPUT_RAYS, 1)
-        push!(newScalars, newStacks[encode(sf.fan.INPUT_RAYS[i,:])])
+    for i in 1:size(SX.fan.RAYS, 1)
+        push!(newScalars, newStacks[encode(sf.fan.RAYS[i,:])])
     end
     
     return StackyFan(sf.fan, newScalars)
@@ -266,7 +283,7 @@ pm::Matrix<pm::Integer>
 """
 
 function findBarycenter(s::Union{AbstractSet,AbstractVector},X::Polymake.BigObjectAllocated)
-    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.INPUT_RAYS)))
+    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
     rays = rowMinors(rayMatrix, s)
     dim=size(rays,2)
     bary=zeros(Int64,dim,1)
@@ -285,7 +302,7 @@ end
 # Examples
 """
 function findBarycenter(s::Union{AbstractSet,AbstractVector},SX::StackyFan)
-    rayMatrix=convert(Array{Int64,2}, Array(Polymake.common.primitive(SX.fan.INPUT_RAYS)))
+    rayMatrix=convert(Array{Int64,2}, Array(Polymake.common.primitive(SX.fan.RAYS)))
     # Multiply the rays by their stacky values
     stackMatrix = diagm(SX.scalars) * rayMatrix
     rays = rowMinors(stackMatrix, s)
@@ -320,7 +337,7 @@ function toric_blowup(s, X, v)
     # Extracting the indices of all the cones in X that contains the set of rays s
     starIndex = findall((t) -> all(((i) -> i in t).(s)), coneList)
     star = [coneList[i] for i in starIndex]
-    rayMatrix = X.INPUT_RAYS
+    rayMatrix = X.RAYS
     
     lattice = X.HASSE_DIAGRAM
     faces = @Polymake.convert_to Array{Set{Int}} lattice.FACES
@@ -358,7 +375,7 @@ function toric_blowup(s, X, v)
         end
         # return newCones plus coneList
         finalCones = [[i - 1 for i in cone] for cone in append!(coneList, newCones)]
-        return Polymake.fulton.NormalToricVariety(INPUT_RAYS = Array(X.INPUT_RAYS), INPUT_CONES = finalCones)
+        return Polymake.fulton.NormalToricVariety(INPUT_RAYS = Array(X.RAYS), INPUT_CONES = finalCones)
     end
     newCones = []
     for t in clStar
@@ -369,17 +386,24 @@ function toric_blowup(s, X, v)
         end
     end
     # return newCones plus coneList
-    finalRays = vcat((X.INPUT_RAYS),v)
+    finalRays = vcat((X.RAYS),v)
     finalCones = [[i - 1 for i in cone] for cone in append!(coneList, newCones)]
     return Polymake.fulton.NormalToricVariety(INPUT_RAYS = finalRays, INPUT_CONES = finalCones)
 end
 
-function stackyBlowup(sf::StackyFan, cone::Array{Int64,1}, ray::Array{Int64,1})
-    blowup = toric_blowup(cone, sf.fan, ray)
-    sf.stacks[encode(ray)] = 1
-    
+function stackyBlowup(sf::StackyFan, cone::Array{Int64,1}, excep::Array{Int64,1})
+    G=gcd(excep)
+    excep=Polymake.common.primitive(excep)
+    blowup = toric_blowup(cone, sf.fan, excep)
+    sf.stacks[encode(excep)] = G
+    newRays=slicematrix(convert(Array{Int64,2},Array(Polymake.common.primitive(blowup.RAYS))))
+    scalars=Int64[]
+    for ray in newRays
+        stack=sf.stacks[encode(ray)]
+        push!(scalars,stack)
+    end
 
-    return(StackyFan(blowup,push!(sf.scalars,1), sf.stacks))
+    return(StackyFan(blowup,scalars, sf.stacks))
 end
 
 """
@@ -392,7 +416,7 @@ end
 function getConesPolymake(sf::StackyFan)
     formatted = convertIncidenceMatrix(sf.fan.CONES)
     cones = map((x) -> Polymake.polytope.Cone(
-        INPUT_RAYS=sf.fan.INPUT_RAYS[x,:]), formatted)
+        INPUT_RAYS=sf.fan.RAYS[x,:]), formatted)
     return(cones)
 end
 
@@ -488,7 +512,8 @@ julia> coneMultiplicity(C)
 
 """
 
-function coneMultiplicity(A::Array{Int64,2})
+function coneMultiplicity(C::Polymake.BigObjectAllocated)
+    A=Polymake.common.primitive(C.RAYS)
     M=matrix(ZZ,[fmpz.(y) for y in A])
     SNF=Nemo.snf(M)
     mult=1
@@ -538,7 +563,7 @@ julia> getCones(X)
 function getCones(X::Polymake.BigObjectAllocated)
     lattice=X.HASSE_DIAGRAM
     faces=@Polymake.convert_to Array{Set{Int}} lattice.FACES
-    out=[]
+    out=Array{Int64,1}[]
     for i in 2:(size(faces,1)-1)
         newface=Array(@Polymake.convert_to Array{Int} faces[i])
         push!(out,[i+1 for i in newface])
@@ -561,7 +586,7 @@ true
 function distinguishedAndIntPoint(cone::Array{Int64,1},rayMatrix::Array{Int64,2},dist::Array{Int64,1})
     l=size(rayMatrix,1)
     if dot(convertToIncidence(cone,l),dist) > 0 #check distinguished
-        C=rowMinors(rayMatrix,cone)
+        C=coneConvert(cone,rayMatrix)
         if interiorPoints(C)!=nothing #check interior point
             return true
         else
@@ -623,8 +648,8 @@ function compareCones(cone1::Array{Int64,1}, cone2::Array{Int64,1}, rayMatrix::A
         return nondist1 - nondist2
     else
         # Need to use the method for calculating multiplicity of cone
-        mult1 = coneMultiplicity(rowMinors(rayMatrix,cone1))
-        mult2 = coneMultiplicity(rowMinors(rayMatrix,cone2))
+        mult1 = coneMultiplicity(coneConvert(cone1,rayMatrix))
+        mult2 = coneMultiplicity(coneConvert(cone2,rayMatrix))
         return mult1 - mult2
     end
 end
@@ -662,11 +687,9 @@ julia> interiorPoints(C)
 
 """
 
-function interiorPoints(rayMatrix::Array{Int64,2})
+function interiorPoints(C::Polymake.BigObjectAllocated)
+    rayMatrix=Array(Polymake.common.primitive(C.RAYS))
     l=size(rayMatrix,1)
-    if l==1
-        return nothing
-    end
     dim=size(rayMatrix,2)
     if rank(rayMatrix)<l
         error("Input cone is not simplicial.")
