@@ -22,13 +22,11 @@ end
 
 struct StackyFan
     fan::Polymake.BigObjectAllocated
-    scalars::Array{Int64, 1}
     stacks::Dict{String, Int64}
     # Constructors for the StackyFan object
     StackyFan(
         fan::Polymake.BigObjectAllocated,
-        scalars::Array{Int64, 1},
-        stacks::Dict{String, Int64}) = new(fan, scalars, stacks)
+        stacks::Dict{String, Int64}) = new(fan, stacks)
     StackyFan(
         rays::Array{Int64, 2},
         cones::Array{Array{Int64, 1}, 1},
@@ -57,10 +55,8 @@ function makeStackyFan(
     stack_rays = mapslices(encode, fan.RAYS, dims=2)
     pairs = map((x,y) -> (x,y), stack_rays, scalars)
     stacks = Dict(pairs)
-    
-    newscalars
 
-    return(StackyFan(fan, scalars, stacks))
+    return(StackyFan(fan, stacks))
 end
 
 """
@@ -77,7 +73,7 @@ function addStackStructure(
     pairs = map((x,y) -> (x,y), stack_rays, scalars)
     stacks = Dict(pairs)
 
-    return(StackyFan(fan, scalars, stacks))
+    return(StackyFan(fan, stacks))
 end
 
 """
@@ -98,6 +94,12 @@ function encode(objects::Polymake.VectorAllocated{Polymake.Integer})
     return(foldl((x,y) -> string(x, ',', y), objects))
 end
 
+"""
+    stackyWeights(::StackyFan)
+
+    Returns a list of the stacky weights of the rays of the given stacky fan 
+with the same order as the rays of the fan.
+"""
 function stackyWeights(sf::StackyFan)
     rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(sf.fan.RAYS)))
     rayList=slicematrix(rayMatrix)
@@ -153,15 +155,13 @@ julia> SX = StackyFan(X, [2,3,5,7])
 
 julia> root = rootConstruction(SX, [1, 4, 2, 1])
 StackyFan(Polymake.BigObjectAllocated(Ptr{Nothing} @0x00007ffe14f4ca10), [2, 12, 10, 7], Dict("1,1,1" => 7, "1,1,0" => 12, "1,0,1" => 10, "1,0,0" => 2))
-julia> root.scalars
-[2, 12, 10, 7]
 """
 function rootConstruction(
     sf::StackyFan,
     scalars::Array{Int64, 1})
     
     # Multiply the scalars of the fan by the given values
-    return StackyFan(sf.fan, sf.scalars .* scalars)
+    return StackyFan(sf.fan, stackyWeights(sf) .* scalars)
 end
 
 """
@@ -180,9 +180,7 @@ julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0 0;1 1 0;1 0 1;1 1 1]
 julia> SX = StackyFan(X, [2,3,5,7])
 
 julia> root = rootConstructionDistinguishedIndices(SX, [0,1,1,0], [4, 2])
-StackyFan(Polymake.BigObjectAllocated(Ptr{Nothing} @0x00007ffe1c00bfa0), [2, 12, 10, 7], Dict("1,1,1" => 7, "1,1,0" => 12, "1,0,1" => 10, "1,0,0" => 2))
-julia> root.scalars
-[2, 12, 10, 7]
+StackyFan(Polymake.BigObjectAllocated(Ptr{Nothing} @0x00007ffe1c00bfa0), Dict("1,1,1" => 7, "1,1,0" => 12, "1,0,1" => 10, "1,0,0" => 2))
 """
 function rootConstructionDistinguishedIndices(
     sf::StackyFan,
@@ -223,9 +221,7 @@ pm::Matrix<pm::Rational>
 1 0 1
 
 julia> root = rootConstructionDistinguished(SX, distinguished, [4, 2])
-StackyFan(Polymake.BigObjectAllocated(Ptr{Nothing} @0x00007ffe1c00bfa0), [2, 12, 10, 7], Dict("1,1,1" => 7, "1,1,0" => 12, "1,0,1" => 10, "1,0,0" => 2))
-julia> root.scalars
-[2, 12, 10, 7]
+StackyFan(Polymake.BigObjectAllocated(Ptr{Nothing} @0x00007ffe1c00bfa0), Dict("1,1,1" => 7, "1,1,0" => 12, "1,0,1" => 10, "1,0,0" => 2))
 """
 function rootConstructionDistinguished(
     sf::StackyFan,
@@ -281,7 +277,6 @@ pm::Matrix<pm::Integer>
 2 1
 
 """
-
 function findBarycenter(s::Union{AbstractSet,AbstractVector},X::Polymake.BigObjectAllocated)
     rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
     rays = rowMinors(rayMatrix, s)
@@ -304,7 +299,7 @@ end
 function findBarycenter(s::Union{AbstractSet,AbstractVector},SX::StackyFan)
     rayMatrix=convert(Array{Int64,2}, Array(Polymake.common.primitive(SX.fan.RAYS)))
     # Multiply the rays by their stacky values
-    stackMatrix = diagm(SX.scalars) * rayMatrix
+    stackMatrix = diagm(stackyWeights(SX)) * rayMatrix
     rays = rowMinors(stackMatrix, s)
     dim=size(rays,2)
     bary=zeros(Int64,dim,1)
@@ -322,9 +317,6 @@ end
     v, blow up X at v. If v is not provided, blow up X at the barycenter of s.
 
 """
-
-
-
 function toric_blowup(s, X, v)
     if size(v,2)==1
          v=transpose(v)
@@ -392,18 +384,16 @@ function toric_blowup(s, X, v)
 end
 
 function stackyBlowup(sf::StackyFan, cone::Array{Int64,1}, excep::Array{Int64,1})
+    # Express the exceptional ray as a scalar multiple of a primitive ray
+    # Use this scalar as the stacky weight in the resulting stacky fan
     G=gcd(excep)
     excep=Polymake.common.primitive(excep)
+    
+    # Perform toric blowup at the given ray
     blowup = toric_blowup(cone, sf.fan, excep)
     sf.stacks[encode(excep)] = G
-    newRays=slicematrix(convert(Array{Int64,2},Array(Polymake.common.primitive(blowup.RAYS))))
-    scalars=Int64[]
-    for ray in newRays
-        stack=sf.stacks[encode(ray)]
-        push!(scalars,stack)
-    end
 
-    return(StackyFan(blowup,scalars, sf.stacks))
+    return(StackyFan(blowup, sf.stacks))
 end
 
 """
@@ -721,37 +711,6 @@ function interiorPoints(C::Polymake.BigObjectAllocated)
         end
     end
     return validPoints
-end
-
-"""
-    findStackyPoint is superseded by coneRayDecomposition and should not be used.
-"""
-
-function findStackyPoint(ray, cone, rayMatrix, stack)
-    # ray is the given "black" lattice point
-    # stackyCone and rayMatrix are the rays of the cone
-    # which should also contain information about the red lattice
-    # Returns the first "red" lattice point along the given ray
-    # Given the rays of stackyCone, \rho_i and \delta_i, find
-    # \psi = a_1 \rho_1 + ... + b_1 \delta_1 + ... + b_n \delta_n
-    # and return a_1, ..., b_1, ..., b_n, and the multiple of ray
-    
-    # Apply stacky structure
-    rays = rowMinors(rayMatrix,cone) .* transpose(stack)
-    # Find integer solutions
-    M = hcat(rays, ray)
-    S = MatrixSpace(ZZ, size(M,1), size(M,2))
-    (dim, c) = nullspace(S(M))
-    # Get smallest integer multiple
-    coef = nothing
-    for col in 1:size(c, 2)
-        if (c[size(c, 1), col] != 0)
-            coef = vec(Matrix{Int}(transpose(c[1:size(c,1), col]) * sign(-c[size(c, 1), col])))
-            coef[size(coef, 2)] = abs(coef[size(coef, 2)])
-        end
-    end
-    # Return the coefficients of the rays of the cone, in the same order
-    return coef
 end
 
 """
