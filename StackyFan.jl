@@ -102,11 +102,19 @@ with the same order as the rays of the fan.
 """
 function stackyWeights(sf::StackyFan)
     rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(sf.fan.RAYS)))
+    #println("Stacky weights ray matrix: $rayMatrix")
     rayList=slicematrix(rayMatrix)
     out=Int64[]
     for ray in rayList
-        stack=sf.stacks[encode(ray)]
-        push!(out,stack)
+        try
+            stack=sf.stacks[encode(ray)]
+            push!(out,stack)
+        catch e
+            println("ERROR!!!")
+            println(e)
+            println(rayMatrix)
+            println(ray)
+        end
     end
     return out
 end
@@ -296,7 +304,7 @@ end
 
 # Examples
 """
-function findBarycenter(s::Union{AbstractSet,AbstractVector},SX::StackyFan)
+function findStackyBarycenter(s::Union{AbstractSet,AbstractVector},SX::StackyFan)
     rayMatrix=convert(Array{Int64,2}, Array(Polymake.common.primitive(SX.fan.RAYS)))
     # Multiply the rays by their stacky values
     stackMatrix = diagm(stackyWeights(SX)) * rayMatrix
@@ -653,9 +661,9 @@ function extremalCones(S, rayMatrix, distinguished)
         cone = S[i]
         # Compare the cone with the first element of the maximal cone list
         comp = compareCones(cone, maxCones[1], rayMatrix, distinguished)
-        if (comp > 0)
+        if comp > 0
             maxCones = [cone]
-        elseif (comp == 0)
+        elseif comp == 0
             push!(maxCones, cone)
         end
     end
