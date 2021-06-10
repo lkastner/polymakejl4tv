@@ -15,11 +15,6 @@ using LinearAlgebra
 
 """
 
-function printn(A)
-    print(A)
-    print("\n")
-end
-
 struct StackyFan
     fan::Polymake.BigObjectAllocated
     stacks::Dict{String, Int64}
@@ -134,13 +129,22 @@ end
 """
     getRayStack(::StackyFan, ::Array{Int64, 1})
 
-    Get the scalar associated with a ray in the given stacky fan structure
+    Get the scalar associated with a ray in the given stacky fan structure.
 
 # Examples
 """
 function getRayStack(sf::StackyFan, ray::Array{Int64, 1})
     return sf.stacks[encode(ray)]
 end
+
+"""
+
+    getMultiplicities(::StackyFan)
+
+    Get the multiplicities of the cones in a stacky fan.
+
+# Examples
+"""
 
 function getMultiplicities(sf::StackyFan)
     cones = getCones(sf)
@@ -260,13 +264,6 @@ function rootConstructionDistinguished(
     return StackyFan(sf.fan, newScalars)
 end
 
-function starSubdivision(X::Polymake.BigObjectAllocated, v::Array{Int64, 1})
-    minimalCone = findMinimalCone(X, v)
-    s = [i - 1 for i in minimalCone]
-    v = transpose(v)
-    return toric_blowup(s, X, v)
-end
-
 """
 
     findBarycenter(::Union{AbstractSet,AbstractVector},::Polymake.BigObjectAllocated)
@@ -285,6 +282,7 @@ pm::Matrix<pm::Integer>
 2 1
 
 """
+
 function findBarycenter(s::Union{AbstractSet,AbstractVector},X::Polymake.BigObjectAllocated)
     rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
     rays = rowMinors(rayMatrix, s)
@@ -297,13 +295,18 @@ function findBarycenter(s::Union{AbstractSet,AbstractVector},X::Polymake.BigObje
 end
 
 """
-    findBarycenter(::Union{AbstractSet,AbstractVector},::StackyFan)
+    findStackyBarycenter(::Union{AbstractSet,AbstractVector},::StackyFan)
 
-    Takes a toric stack X and a set s corresponding to a subset of rays of X, and outputs a polymake vector
-    corresponding to the barycenter of those rays.
+    Takes a stacky fan SX and a set s corresponding to a subset of rays of SX, calculates the 'stacky rays' corresponding to those rays (the rays times their stacky values), and find the barycenter of the stacky rays.
 
 # Examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0; 1 2],INPUT_CONES=[[0,1]])
+julia> F=addStackStructure(X,[2,3])
+julia> findStackyBarycenter([1,2],F)
+[ 5 ,  6 ]
 """
+
 function findStackyBarycenter(s::Union{AbstractSet,AbstractVector},SX::StackyFan)
     rayMatrix=convert(Array{Int64,2}, Array(Polymake.common.primitive(SX.fan.RAYS)))
     # Multiply the rays by their stacky values
@@ -390,6 +393,22 @@ function toric_blowup(s, X, v)
     finalCones = [[i - 1 for i in cone] for cone in append!(coneList, newCones)]
     return Polymake.fulton.NormalToricVariety(INPUT_RAYS = finalRays, INPUT_CONES = finalCones)
 end
+
+"""
+
+    stackyBlowup(::StackyFan,::Array{Int64,1},::Array{Int64,1})
+
+    Takes a stacky fan sf, a ray excep, and a cone, and subdivides the stacky fan at the given ray. Crucially, the given cone should be the minimal cone containing the exceptional ray. The cone input should be zero-indexed.
+
+#examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0; 1 2],INPUT_CONES=[[0,1]])
+julia> F=addStackStructure(X,[2,3])
+julia> stackyBlowup(F,[0,1],[1,1])
+StackyFan(Polymake.BigObjectAllocated(Ptr{Nothing} @0x000000002373f7a0), Dict("1,2" => 3, "1,0" => 2, "1,1" => 1))
+    
+
+"""
 
 function stackyBlowup(sf::StackyFan, cone::Array{Int64,1}, excep::Array{Int64,1})
     # Express the exceptional ray as a scalar multiple of a primitive ray
@@ -652,7 +671,19 @@ function compareCones(cone1::Array{Int64,1}, cone2::Array{Int64,1}, rayMatrix::A
     end
 end
 
-function extremalCones(S, rayMatrix, distinguished)
+"""
+
+    extremalCones(::Array{Array{Int64,1},1},::Array{Int64,2},::Array{Int64,1})
+
+    Takes a list of vectors representing cones in a fan, a ray matrix, and a vector representing the distinguished rays as 0 or 1 values, and calculates the cones that are maximal with respect to (first) the number of non-distinguished rays and (second) the multiplicity of the cone. In Bergh's algorithm A (where this ordering is used), the input S will consist only of those cones containing at least one distinguished ray and at least one interior point.
+
+#Examples
+```jldoctest StackyFan
+julia> extremalCones([[1,2],[2,3],[3,4]],[1 0;1 2; 1 5; 1 8],[0,1,1,0])
+[[ 3 ,  4 ]]
+"""
+
+function extremalCones(S::Array{Array{Int64,1},1}, rayMatrix::Array{Int64,2}, distinguished::Array{Int64,1})
     # Finds the extremal cones according to # distinguished rays and multiplicity
     # distinguished is a boolean vector whose size is equal to the number of rays
     # The i-th index is 1 if the i-th ray (in rayMatrix) is distinguished
@@ -674,7 +705,7 @@ end
 
     interiorPoints(::Polymake.BigObjectAllocated)
 
-    Finds all interior lattice points contained in the fundamental region of a given cone. When multiple interior lattice points lie along the same ray, only the point closest to the origin is returned.
+    Finds all interior lattice points contained in the fundamental region of a given cone. When multiple interior lattice points lie along the same ray, only the point closest to the origin is returned. Notably, 
 
 # Examples
 ```jldoctest StackyFan
@@ -754,13 +785,33 @@ function minimalByLex(A::Array{Array{Int64,1},1})
     return minimal
 end
 
+"""
+    
+    minimalByDist(::Array{Array{Int64,1},1},::Array{Int64,1})
+
+    Given a list of vectors (representing rays as weighted sums of other rays) and a vector of 0's and 1's representing non-distinguished and distinguished rays, returns a vector from the list such that the sum of the entries is minimized.
+
+#Examples
+```jldoctest StackyFan
+julia> minimalByDist([[0,1,5,7],[3,3,2,2],[8,5,3,6],[2,1,1,10]],[0,1,1,0])
+[ 3 , 3 , 2 , 2 ]
+"""
+
 function minimalByDist(A::Array{Array{Int64,1},1},D::Array{Int64,1})
+    invD=Int64[]
+    for a in D
+        if a==0
+            push!(invD,1)
+        elseif a==1
+            push!(invD,0)
+        end
+    end
     l=size(A,1)
     minimal=A[1]
     d=size(minimal,1)
     for i in 2:l
         test=A[i]
-        if dot(test,D)<dot(minimal,D)
+        if sum(test)<sum(minimal)
             minimal=test
         end
     end
