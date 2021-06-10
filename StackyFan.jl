@@ -754,6 +754,19 @@ function minimalByLex(A::Array{Array{Int64,1},1})
     return minimal
 end
 
+function minimalByDist(A::Array{Array{Int64,1},1},D::Array{Int64,1})
+    l=size(A,1)
+    minimal=A[1]
+    d=size(minimal,1)
+    for i in 2:l
+        test=A[i]
+        if dot(test,D)<dot(minimal,D)
+            minimal=test
+        end
+    end
+    return minimal
+end
+
 """
     coneRayDecomposition(::Array{Int64,1},::Array{Int64,2},::Array{Int64,1},::Array{Int64,1})
 
