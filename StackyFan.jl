@@ -789,7 +789,7 @@ end
     
     minimalByDist(::Array{Array{Int64,1},1},::Array{Int64,1})
 
-    Given a list of vectors (representing rays as weighted sums of other rays) and a vector of 0's and 1's representing non-distinguished and distinguished rays, returns a vector from the list such that the sum of the entries is minimized.
+    Given a list of vectors (representing rays as weighted sums of other rays) and a vector of 0's and 1's representing non-distinguished and distinguished indices, returns a vector from the list such that the sum of the entries corresponding to distinguished indices is minimized.
 
 #Examples
 ```jldoctest StackyFan
@@ -798,20 +798,12 @@ julia> minimalByDist([[0,1,5,7],[3,3,2,2],[8,5,3,6],[2,1,1,10]],[0,1,1,0])
 """
 
 function minimalByDist(A::Array{Array{Int64,1},1},D::Array{Int64,1})
-    invD=Int64[]
-    for a in D
-        if a==0
-            push!(invD,1)
-        elseif a==1
-            push!(invD,0)
-        end
-    end
     l=size(A,1)
     minimal=A[1]
     d=size(minimal,1)
     for i in 2:l
         test=A[i]
-        if sum(test)<sum(minimal)
+        if dot(test,D)<dot(minimal,D)
             minimal=test
         end
     end
