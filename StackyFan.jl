@@ -3,6 +3,7 @@ using Polymake
 using InvertedIndices
 using Combinatorics
 using LinearAlgebra
+using Plots
 
 """
 
@@ -1086,4 +1087,110 @@ function BerghA(F::StackyFan,D::Array{Int64,1};verbose::Bool=false)
         println("Number of steps: $i")
     end
     return X
+end
+
+function plot3dCone(L::Array{Array{Int64,1},1})
+    l=size(L,1)
+    if l==3
+        (x1,y1,z1)=L[1]
+        (x2,y2,z2)=L[2]
+        (x3,y3,z3)=L[3]
+        X=[0,x1,0,x2,0,x3,x2,x1,x3]
+        Y=[0,y1,0,y2,0,y3,y2,y1,y3]
+        Z=[0,z1,0,z2,0,z3,z2,z1,z3]
+        plot!(X,Y,Z)
+    elseif l==2
+        (x1,y1,z1)=L[1]
+        (x2,y2,z2)=L[2]
+        X=[0,x1,x2,0]
+        Y=[0,y1,y2,0]
+        Z=[0,z1,z2,0]
+        plot!(X,Y,Z)
+    elseif l==1
+        (x1,y1,z1)=L[1]
+        X=[0,x1]
+        Y=[0,y1]
+        Z=[0,z1]
+        plot!(X,Y,Z)
+    else 
+        error("Input cone is empty or not simplicial.")
+    end
+end
+
+function plot2dCone(L::Array{Array{Int64,1},1})
+    l=size(L,1)
+    if l==2
+        (x1,y1)=L[1]
+        (x2,y2)=L[2]
+        S=Shape([(0,0),(x1,y1),(x2,y2)])
+        plot!(S)
+    elseif l==1
+        (x1,y1)=L[1]
+        X=[0,x1]
+        Y=[0,y1]
+        plot!(X,Y)
+    else
+        error("Input cone is empty or not simplicial.")
+    end
+end
+
+function showFan(X::Polymake.BigObjectAllocated)
+    plot()
+    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
+    dim=size(rayMatrix,2)
+    if !(dim in [2,3])
+         println("Fan visualization is only supported in dimensions 2 and 3.")
+    end
+    maxCones=convertIncidenceMatrix(X.MAXIMAL_CONES)
+    for cone in maxCones
+        coneRays=slicematrix(rowMinors(rayMatrix,cone))
+        if dim==2
+            plot2dCone(coneRays)
+        elseif dim==3
+            plot3dCone(coneRays)
+        end
+    end
+    plot!()
+end
+
+function showStackyFan(F::StackyFan;stacks=false,stackypoints=true)
+    X=F.fan
+    plot()
+    if stacks==false
+        rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
+    elseif stacks==true
+        rayMatrix=findStackyRayMatrix(F)
+    end
+    dim=size(rayMatrix,2)
+    if !(dim in [2,3])
+         println("Fan visualization is only supported in dimensions 2 and 3.")
+    end
+    maxCones=convertIncidenceMatrix(X.MAXIMAL_CONES)
+    for cone in maxCones
+        coneRays=slicematrix(rowMinors(rayMatrix,cone))
+        if dim==2
+            plot2dCone(coneRays)
+        elseif dim==3
+            plot3dCone(coneRays)
+        end
+    end
+    if stackypoints==true
+        stackyPoints=slicematrix(findStackyRayMatrix(F))
+        for point in stackyPoints
+            if dim==2
+                (x,y)=point
+                plot!([x],[y],shape=:circle,color=:red)
+            elseif dim==3
+                (x,y,z)=point
+                plot!([x],[y],[z],shape=:circle,color=:red)
+            end
+        end
+    end
+    plot!(legend=false)
+end
+
+function findStackyRayMatrix(sf::StackyFan)
+    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(sf.fan.RAYS)))
+    sW=stackyWeights(sf)
+    return sW .* rayMatrix
 end
