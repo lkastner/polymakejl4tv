@@ -326,6 +326,30 @@ function findStackyBarycenter(s::Union{AbstractSet,AbstractVector},SX::StackyFan
 end
 
 """
+    findStackyRayMatrix(::StackyFan)
+
+    Outputs the ray matrix of the given stacky fan, such that each primitive ray is multiplied by its stacky weights.
+
+# Examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0; 2 3; 1 5],INPUT_CONES=[[0,1],[1,2]]);
+
+julia> F=addStackStructure(X,[1,2,3]);
+
+julia> findStackyRayMatrix(F)
+3×2 Matrix{Int64}:
+ 1   0
+ 4   6
+ 3  15
+```
+"""
+function findStackyRayMatrix(sf::StackyFan)
+    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(sf.fan.RAYS)))
+    sW=stackyWeights(sf)
+    return sW .* rayMatrix
+end
+
+"""
 
     toric_blowup(::Union{AbstractSet,AbstractVector},::Polymake.BigObjectAllocated,::AbstractVector)
 
@@ -889,7 +913,7 @@ julia> stackyWeights(BerghA(F,[0,1]))
 
 julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[4 1; 7 9],INPUT_CONES=[[0,1]]);
 
-julia> F=addStackStructure(X,[1,1])l;
+julia> F=addStackStructure(X,[1,1]);
 
 julia> stackyWeights(BerghA(F,[1,0]))
 [ 609 ,  29 ,  1 ,  174 ,  29 ,  1740 ,  1218 ,  58 ,  145 ,  1044 ,  1044 ,  290 ,  290 ,  145 ,  406 ,  348 ,  261 ,  14616 ,  14616 ,  609 ,  3480 ,  870 ,  609 ,  174 ,  609 ,  9744 ,  14616 ,  1218 ,  58 ,  145 ,  435 ,  725 ,  1305 ,  1740 ,  6960 ,  3480 ,  870 ,  3480 ,  58464 ,  6090 ,  3480 ,  1392 ,  696 ,  1044 ,  2088 ,  261 ,  174 ,  261 ,  609 ,  406 ,  609 ,  609 ,  406 ,  609 ,  1218 ,  812 ,  1218 ,  2088 ,  261 ,  1044 ,  1160 ,  1740 ,  1740 ,  870 ,  1305 ,  1305 ,  14616 ,  10440 ,  145 ,  435 ,  609 ,  116 ,  580 ,  290 ,  580 ,  1740 ,  3480 ,  3480 ,  261 ,  522 ,  261 ,  522 ,  522 ,  1218 ,  1218 ,  1218 ,  1218 ,  2436 ,  2436 ,  4176 ,  2088 ,  3480 ,  2610 ,  29232 ,  6090 ,  1218 ,  290 ,  145 ,  290 ,  12180 ,  261 ,  522 ]
@@ -1089,7 +1113,22 @@ function BerghA(F::StackyFan,D::Array{Int64,1};verbose::Bool=false)
     return X
 end
 
-function plot3dCone(L::Array{Array{Int64,1},1})
+"""
+=========VISUALIZATION FUNCTIONALITY==========
+"""
+
+"""
+
+    plot3dSimpCone(::Array{Array{Int64,1},1})
+
+    Give a list of three 3-dimensional vectors, plots the polygon defined by those vectors and the origin via Plots.jl.
+
+# Examples
+```jldoctest StackyFan
+julia> plot3dSimpCone([[1,0,0],[0,1,0],[0,0,1]]);
+```
+"""
+function plot3dSimpCone(L::Array{Array{Int64,1},1})
     l=size(L,1)
     if l==3
         (x1,y1,z1)=L[1]
@@ -1117,6 +1156,17 @@ function plot3dCone(L::Array{Array{Int64,1},1})
     end
 end
 
+"""
+
+    plot2dCone(::Array{Array{Int64,1},1})
+
+    Given a list of two 2-dimesnional vectors, plots the polygon defined by those vectors and the origin via Plots.jl.
+
+# Examples
+```jldoctest StackyFan
+julia> plot2dCone([[1,0],[0,1]]);
+```
+"""
 function plot2dCone(L::Array{Array{Int64,1},1})
     l=size(L,1)
     if l==2
@@ -1134,7 +1184,20 @@ function plot2dCone(L::Array{Array{Int64,1},1})
     end
 end
 
-function showFan(X::Polymake.BigObjectAllocated)
+"""
+
+    showSimpFan(X::Polymake.BigObjectAllocated)
+
+    Plots the input simplicial fan as a collection of polygons or polyhedra defined by the input rays and the origin via Plots.jl.
+
+# Examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0; 2 5],INPUT_CONES=[[0,1]]);
+
+julia> showSimpFan(X);
+```
+"""
+function showSimpFan(X::Polymake.BigObjectAllocated)
     plot()
     rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
     dim=size(rayMatrix,2)
@@ -1147,20 +1210,31 @@ function showFan(X::Polymake.BigObjectAllocated)
         if dim==2
             plot2dCone(coneRays)
         elseif dim==3
-            plot3dCone(coneRays)
+            plot3dSimpCone(coneRays)
         end
     end
-    plot!()
+    plot!(legend=false)
 end
 
-function showStackyFan(F::StackyFan;stacks=false,stackypoints=true)
+"""
+
+    showSimpStackyFan(::StackyFan;::Bool=true)
+
+    Extends the functionality of showSimpFan to stacky simplicial fans. If the stackypoints input is set to true, a red dot is shown at the location of each primitive vector multiplied by its stacky weight.
+
+# Examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0; 2 5],INPUT_CONES=[[0,1]]);
+
+julia> F=addStackStructure(X,[1,2]);
+
+julia> showSimpStackyFan(F)
+```
+"""
+function showSimpStackyFan(F::StackyFan;stackypoints::Bool=true)
     X=F.fan
     plot()
-    if stacks==false
-        rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
-    elseif stacks==true
-        rayMatrix=findStackyRayMatrix(F)
-    end
+    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
     dim=size(rayMatrix,2)
     if !(dim in [2,3])
          println("Fan visualization is only supported in dimensions 2 and 3.")
@@ -1171,7 +1245,7 @@ function showStackyFan(F::StackyFan;stacks=false,stackypoints=true)
         if dim==2
             plot2dCone(coneRays)
         elseif dim==3
-            plot3dCone(coneRays)
+            plot3dSimpCone(coneRays)
         end
     end
     if stackypoints==true
@@ -1189,8 +1263,148 @@ function showStackyFan(F::StackyFan;stacks=false,stackypoints=true)
     plot!(legend=false)
 end
 
-function findStackyRayMatrix(sf::StackyFan)
-    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(sf.fan.RAYS)))
-    sW=stackyWeights(sf)
-    return sW .* rayMatrix
+"""
+
+    
+
+# Examples
+
+    coneVectorOrder(::Polymake.BigObjectAllocated)
+
+    Takes a polyhedral cone in 2 or 3 dimensions and outputs a list of its defining rays, arranged in counterclockwise order around the exterior of the cone.
+
+# Exampels
+```jldoctest StackyFan
+julia> C=Polymake.polytope.Cone(INPUT_RAYS=[[1 0 0; 1 0 1; 0 1 1; 1 1 1]]);
+
+julia> coneVectorOrder(C)
+[[1
+, 1, 0], [1, 1, 1], [1, 0, 1], [1, 0, 0]]
+```
+"""
+function coneVectorOrder(C::Polymake.BigObjectAllocated)
+    rayList=slicematrix(convert(Array{Int64,2},Array(Polymake.common.primitive(C.RAYS))))
+    orderedRayList=Array{Int64,1}[]
+    ordering=Array(C.RIF_CYCLIC_NORMAL[1])
+    ordering=[i+1 for i in ordering]
+    for i in ordering
+        push!(orderedRayList,rayList[i])
+    end
+    return orderedRayList
+end
+
+"""
+
+    plot3dCone(::Array{Array{Int64,1},1})
+
+    Plots the 3-dimensional cone defined by the given list of rays. The input rays are assumed to be in counterclockwise or clockwise order around the cone; coneVectorOrder() can be used to obtain this ordering from an arbitrary cone.
+
+# Examples
+```jldoctest StackyFan
+julia> plot3dCone([[1,1,0],[1,1,1],[1,0,1],[1,0,0]]);
+```
+"""
+function plot3dCone(L::Array{Array{Int64,1},1})
+    l=size(L,1)
+    X=Int64[0]
+    Y=Int64[0]
+    Z=Int64[0]
+    for i in 1:l
+        push!(X,L[i][1])
+        push!(Y,L[i][2])
+        push!(Z,L[i][3])
+        push!(X,0)
+        push!(Y,0)
+        push!(Z,0)
+    end
+    for i in 1:l
+        push!(X,L[i][1])
+        push!(Y,L[i][2])
+        push!(Z,L[i][3])
+    end
+    push!(X,L[1][1])
+    push!(Y,L[1][2])
+    push!(Z,L[1][3])
+    plot!(X,Y,Z)
+end
+
+"""
+
+    showFan(X::Polymake.BigObjectAllocated)
+
+    Plots the input fan as a collection of polygons or polyhedra defined by the input rays and the origin via Plots.jl.
+
+# Examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0 0; 1 0 1; 1 1 0; 1 1 1],INPUT_CONES=[[0,1,2,3]]);
+
+julia> showFan(X);
+```
+"""
+function showFan(X::Polymake.BigObjectAllocated)
+    plot()
+    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
+    dim=size(rayMatrix,2)
+    if !(dim in [2,3])
+         println("Fan visualization is only supported in dimensions 2 and 3.")
+    end
+    maxCones=convertIncidenceMatrix(X.MAXIMAL_CONES)
+    for cone in maxCones
+        if dim==2
+            coneRays=slicematrix(rowMinors(rayMatrix,cone))
+            plot2dCone(coneRays)
+        elseif dim==3
+            C=coneConvert(cone,rayMatrix)
+            plot3dCone(coneVectorOrder(C))
+        end
+    end
+    plot!(legend=false)
+end
+    
+"""
+
+    showStackyFan(::StackyFan;::Bool=true)
+
+    Extends the functionality of showFan to stacky fans. If the stackypoints input is set to true, a red dot is shown at the location of each primitive vector multiplied by its stacky weight.
+
+# Examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0 0; 1 0 1; 1 1 0; 1 1 1],INPUT_CONES=[[0,1,2,3]]);
+
+julia> F=addStackStructure(X,[1,2,2,5]);
+
+julia> showStackyFan(F);
+```
+"""   
+function showStackyFan(F::StackyFan;stackypoints::Bool=true)
+    X=F.fan
+    plot()
+    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
+    dim=size(rayMatrix,2)
+    if !(dim in [2,3])
+         println("Fan visualization is only supported in dimensions 2 and 3.")
+    end
+    maxCones=convertIncidenceMatrix(X.MAXIMAL_CONES)
+    for cone in maxCones
+        if dim==2
+            coneRays=slicematrix(rowMinors(rayMatrix,cone))
+            plot2dCone(coneRays)
+        elseif dim==3
+            C=coneConvert(cone,rayMatrix)
+            plot3dCone(coneVectorOrder(C))
+        end
+    end
+    if stackypoints==true
+        stackyPoints=slicematrix(findStackyRayMatrix(F))
+        for point in stackyPoints
+            if dim==2
+                (x,y)=point
+                plot!([x],[y],shape=:circle,color=:red)
+            elseif dim==3
+                (x,y,z)=point
+                plot!([x],[y],[z],shape=:circle,color=:red)
+            end
+        end
+    end
+    plot!(legend=false)
 end
