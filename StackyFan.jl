@@ -3,7 +3,6 @@ using Polymake
 using InvertedIndices
 using Combinatorics
 using LinearAlgebra
-using Plots
 
 """
 
@@ -36,7 +35,13 @@ end
 """
     makeStackyFan(::Array{Int64,2},::Array{Array{Int64,1},1},::Array{Int64,1}))
 
-Function to generate a stacky fan from a matrix representing rays as row vectors, a vector of vectors representing the rays contained in each cone, and a vector of stacky values to be assigned the rays.
+Function to generate a stacky fan from a matrix representing rays as row vectors, a vector of vectors representing the rays contained in each cone, and a vector of stacky values to be assigned the rays. The second input should be zero-indexed.
+
+# Examples
+```jldoctest StackyFan
+julia> makeStackyFan([1 0; 1 1; 1 2],[[0,1],[1,2]],[2,2,2])
+[ 2 ,  2 ,  2 ]
+```
 """
 function makeStackyFan(
     rays::Array{<:Number,2},
@@ -58,6 +63,14 @@ end
     addStackStructure(::Polymake.BigObjectAllocated, ::Array{Int64, 1})
 
     Function to generate a stacky fan from a given fan and a set of scalars.
+
+# Examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0; 1 1; 1 2],INPUT_CONES=[[0,1],[1,2]]);
+
+julia> stackyWeights(addStackStructure(X,[2,2,2]))
+[ 2 ,  2 ,  2 ]
+```
 """
 function addStackStructure(
     fan::Polymake.BigObjectAllocated,
@@ -72,27 +85,33 @@ function addStackStructure(
 end
 
 """
-    encode(::Polymake.VectorAllocated{Polymake.Rational})
+    encode(::Union{Polymake.VectorAllocated{Polymake.Rational},Polymake.VectorAllocated{Polymake.Integer},Vector{Int64}})
 
-    Internal function that converts a Polymake vector, representing a ray in the fan,
+    Internal function that converts a vector, representing a ray in the fan,
 to a string in order to allow for hashing for the dictionary.
+
+#Examples
+```jldoctest StackyFan
+julia> encode([1,0,2,5])
+"1,0,2,5"
+```
 """
-function encode(objects::Polymake.VectorAllocated{Polymake.Integer})
-    return(foldl((x,y) -> string(x, ',', y), objects))
-end
-
-function encode(objects::Vector{Int64})
-    return(foldl((x,y) -> string(x, ',', y), objects))
-end
-
-function encode(objects::Polymake.VectorAllocated{Polymake.Rational})
+function encode(::Union{Polymake.VectorAllocated{Polymake.Rational},Polymake.VectorAllocated{Polymake.Integer},Vector{Int64}})
     return(foldl((x,y) -> string(x, ',', y), objects))
 end
 
 """
     stackyWeights(::StackyFan)
 
-Returns a list of the stacky weights of the rays of the given stacky fan with the same order as the rays of the fan.
+    Returns a list of the stacky weights of the rays of the given stacky fan with the same order as the rays of the fan.
+
+#Examples
+```jldoctest StackyFan
+julia> F=makeStackyFan([1 0; 1 1; 1 2; 1 3],[[0,1],[1,2],[2,3]],[1,2,3,4]);
+
+julia> stackyWeights(F)
+[ 1 ,  2 ,  3 ,  4 ]
+```
 """
 function stackyWeights(sf::StackyFan)
     rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(sf.fan.RAYS)))
@@ -100,28 +119,10 @@ function stackyWeights(sf::StackyFan)
     rayList=slicematrix(rayMatrix)
     out=Int64[]
     for ray in rayList
-        try
-            stack=sf.stacks[encode(ray)]
-            push!(out,stack)
-        catch e
-            println("ERROR!!!")
-            println(e)
-            println(rayMatrix)
-            println(ray)
-            error("Ray matrix value reassignment issue encountered.")
-        end
+        stack=sf.stacks[encode(ray)]
+        push!(out,stack)
     end
     return out
-end
-
-
-"""
-    decode(::Array{String,2})
-
-    Unused
-"""
-function decode(object::Array{String,2})
-    return(map((x) -> parse(Int64, x), object))
 end
 
 ## API functions
@@ -132,22 +133,15 @@ end
     Get the scalar associated with a ray in the given stacky fan structure.
 
 # Examples
+```jldoctest StackyFan
+julia> F=makeStackyFan([1 0; 1 1; 1 2; 1 3],[[0,1],[1,2],[2,3]],[1,2,3,4]);
+
+julia> getRayStack(F,[1,2])
+3
+```
 """
 function getRayStack(sf::StackyFan, ray::Array{Int64, 1})
     return sf.stacks[encode(ray)]
-end
-
-"""
-
-    getMultiplicities(::StackyFan)
-
-    Get the multiplicities of the cones in a stacky fan.
-
-# Examples
-"""
-function getMultiplicities(sf::StackyFan)
-    cones = getCones(sf)
-    return(map((x,y) -> (x,y), cones, map(coneMultiplicity, cones)))
 end
 
 """
@@ -191,7 +185,9 @@ and does not modify the input.
 # Examples
 ```jldoctest StackyFan
 julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0 0;1 1 0;1 0 1;1 1 1],INPUT_CONES=[[0,1,2],[1,2,3]]);
+
 julia> SX = StackyFan(X, [2,3,5,7]);
+
 julia> stackyWeights(rootConstructionDistinguishedIndices(SX, [0,1,1,0], [4, 2, 1, 3]))
 [ 2 ,  6 ,  5 ,  7 ]
 ```
@@ -270,8 +266,7 @@ end
 
     findBarycenter(::Union{AbstractSet,AbstractVector},::Polymake.BigObjectAllocated)
 
-    Takes a normal toric variety X and a set s corresponding to a subset of rays of X, and outputs a polymake vector
-    corresponding to the barycenter of those rays.
+    Takes a normal toric variety X and a set s corresponding to a subset of rays of X, and outputs a polymake vector corresponding to the barycenter of those rays.
 
 # Examples
 ```jldoctest makeSmoothWithDependencies
@@ -284,7 +279,6 @@ pm::Matrix<pm::Integer>
 2 1
 ```
 """
-
 function findBarycenter(s::Union{AbstractSet,AbstractVector},X::Polymake.BigObjectAllocated)
     rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.RAYS)))
     rays = rowMinors(rayMatrix, s)
@@ -353,9 +347,25 @@ end
 
     toric_blowup(::Union{AbstractSet,AbstractVector},::Polymake.BigObjectAllocated,::AbstractVector)
 
-    Takes a normal toric variety X, a set s corresponding to a subset of rays of X, and a (optional) polymake vector,
-    v, blow up X at v. If v is not provided, blow up X at the barycenter of s.
+    Takes a normal toric variety X, a set s corresponding to a subset of rays of X, and a (optional) polymake vector, v, blow up X at v. If v is not provided, blow up X at the barycenter of s.
 
+# Examples
+```jldoctest StackyFan
+julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0; 1 2],INPUT_CONES=[[0,1]]);
+
+julia> B=toric_blowup([0,1],X,[1,1]);
+
+julia> B.INPUT_RAYS
+pm::Matrix<pm::Rational>
+1 0
+1 2
+1 1
+
+julia> B.INPUT_CONES
+pm::IncidenceMatrix<pm::NonSymmetric>
+{0 2}
+{1 2}
+```
 """
 function toric_blowup(s, X, v)
     if size(v,2)==1
@@ -457,11 +467,19 @@ end
     getConesPolymake(sf::StackyFan)
 
     Returns a list of cones of a stacky fan, with the cones represented as polymake objects.
-
+    
+#Examples
+```jldoctest StackyFan
+julia> F=makeStackyFan([1 0; 1 1; 1 2; 1 3],[[0,1],[1,2],[2,3]])
+    
+julia> getConesPolymake(F)[1].RAYS
+pm::Matrix<pm::Rational>
+1 0
+1 1
+```
 """
-
 function getConesPolymake(sf::StackyFan)
-    formatted = convertIncidenceMatrix(sf.fan.CONES)
+    formatted = convertIncidenceMatrix(sf.fan.MAXIMAL_CONES)
     cones = map((x) -> Polymake.polytope.Cone(
         INPUT_RAYS=sf.fan.RAYS[x,:]), formatted)
     return(cones)
@@ -474,7 +492,7 @@ end
     Take a two-dimensional matrix and output a list of its row vectors.
 
 # Examples
-```jldoctest makeSmoothWithDependencies
+```jldoctest StackyFan
 julia> A=[1 2; 3 4];
 
 julia> slicematrix(A)
@@ -491,7 +509,7 @@ end
     Identical to slicematrix, except only returns row vectors indexed by a set S.
 
 # Examples
-```jldoctest makeSmoothWithDependencies
+```jldoctest StackyFan
 julia> A=[1 2 3;4 5 6; 7 8 9];
 
 julia> S=Set([1,3]);
@@ -516,11 +534,10 @@ end
 """
     convertIncidenceMatrix(::Polymake.IncidenceMatrixAllocated{Polymake.NonSymmetric})
 
-    Takes a Polymake incidence matrix (e.g., the output of X.MAXIMAL_CONES for a toric variety X) and outputs a list of vectors,
-    with each vector recording the indices marked on a given row of the incidence matrix.
+    Takes a Polymake incidence matrix (e.g., the output of X.MAXIMAL_CONES for a toric variety X) and outputs a list of vectors, with each vector recording the indices marked on a given row of the incidence matrix.
 
 # Examples
-```jldoctest makeSmoothWithDependencies
+```jldoctest StackyFan
 julia> X=Polymake.fulton.NormalToricVariety(INPUT_RAYS=[1 0;1 1; 0 1],INPUT_CONES=[[0,1],[1,2]]);
 
 julia> M=X.MAXIMAL_CONES;
@@ -550,7 +567,7 @@ end
 
     coneMultiplicity(C::Polymake.BigObjectAllocated)
 
-    Returns the multiplicity of a polyhedral cone (inputted as a Polymake object): here, the multiplicity is defined as the index of the sublattice generated by the edges of the cone, inside the full integer lattice contained in the linear subspace generated by the edges of the cone.
+    Returns the multiplicity of a polyhedral cone (inputted as a Polymake object): here, the multiplicity is defined as the index of the sublattice generated by the rays of the cone, inside the full integer lattice contained in the linear subspace generated by the edges of the cone.
 
 # Examples
 ```jldoctest StackyFan
@@ -561,7 +578,6 @@ julia> coneMultiplicity(C)
 2
 ```
 """
-
 function coneMultiplicity(C::Polymake.BigObjectAllocated)
     A=Polymake.common.primitive(C.RAYS)
     M=matrix(ZZ,[fmpz.(y) for y in A])
@@ -586,7 +602,6 @@ julia> typeof(coneConvert([1, 2, 4],[1 0 0; 0 1 0; 0 0 1; 1 1 1]))
 Polymake.BigObjectAllocated
 ```
 """
-
 function coneConvert(cone::Array{Int64,1},rayMatrix::Array{Int64,2})
     coneRays=rowMinors(rayMatrix,cone)
     C=Polymake.polytope.Cone(RAYS=coneRays)
@@ -607,7 +622,6 @@ julia> getCones(X)
 [[ 0 ,  1 ,  2 ,  3 ], [ 0 ,  1 ], [ 0 ,  2 ], [ 2 ,  3 ], [ 1 ,  3 ], [ 0 ], [ 1 ], [ 2 ], [ 3 ]]
 ```
 """
-
 function getCones(X::Polymake.BigObjectAllocated)
     lattice=X.HASSE_DIAGRAM
     faces=@Polymake.convert_to Array{Set{Int}} lattice.FACES
@@ -620,9 +634,9 @@ function getCones(X::Polymake.BigObjectAllocated)
 end
 
 """
-        distinguishedAndMultiplicity(::Array{Int64,1},::Array{Int64,2},::Array{Int64,1})
+        distinguishedAndIntPoit(::Array{Int64,1},::Array{Int64,2},::Array{Int64,1})
 
-    Calculates if the cone formed by a subset of rays in rayMatrix indexed by the entries of cone, and with a distinguished structure given by the incidence vector dist, both contains at least one distinguished ray and has multiplicity greater than 1.
+    Calculates if the cone formed by a subset of rays in rayMatrix indexed by the entries of cone, and with a distinguished structure given by the incidence vector dist, both contains at least one distinguished ray and contains a proper interior point.
 
 # Examples
 ```jldoctest StackyFan
@@ -630,7 +644,6 @@ julia> distinguishedAndMultiplicity([1,2,4],[1 0 0; 1 2 0;2 1 3; 1 0 3],[1,0,0,0
 true
 ```
 """
-
 function distinguishedAndIntPoint(cone::Array{Int64,1},rayMatrix::Array{Int64,2},dist::Array{Int64,1})
     l=size(rayMatrix,1)
     if dot(convertToIncidence(cone,l),dist) > 0 #check distinguished
@@ -652,12 +665,11 @@ end
 Returns a vector of length l, with entries of 1 indexed by v and entries of 0 everywhere else.
 
 # Examples
-```jldoctest 
+```jldoctest StackyFan
 julia> convertToIncidence([2,3,5],6)
 [ 0 , 1 , 1 , 0 , 1 , 0 ]
 ```
 """
-
 function convertToIncidence(v::Array{Int64,1},l::Int64)
     out=[]
     for j in 1:l
@@ -677,7 +689,7 @@ end
     Takes in two cones (in index vector notation), a ray matrix, and a incidence vector of distinguished rays. If the cones do not have an equal number of distinguished rays, returns the difference between the two values. Otherwise, returns the difference in the cone multiplicities.
 
 # Examples
-```jldoctest
+```jldoctest StackyFan
 julia> compareCones([1,2],[2,3],[1 0 0; 0 1 0; 0 0 1],[1,1,0])
 1
 
@@ -685,7 +697,6 @@ julia> compareCones([1,2],[1,3],[1 0;1 2;1 -1],[1,1,1])
 1
 ```
 """
-
 function compareCones(cone1::Array{Int64,1}, cone2::Array{Int64,1}, rayMatrix::Array{Int64,2}, distinguished::Array{Int64,1})
     l=size(rayMatrix,1)
     c1=convertToIncidence(cone1,l)
@@ -715,7 +726,6 @@ julia> extremalCones([[1,2],[2,3],[3,4]],[1 0;1 2; 1 5; 1 8],[0,1,1,0])
 [[ 3 ,  4 ]]
 ```
 """
-
 function extremalCones(S::Array{Array{Int64,1},1}, rayMatrix::Array{Int64,2}, distinguished::Array{Int64,1})
     # Finds the extremal cones according to # distinguished rays and multiplicity
     # distinguished is a boolean vector whose size is equal to the number of rays
@@ -748,7 +758,6 @@ julia> interiorPoints(C)
 [[ 1 ,  1 ]]
 ```
 """
-
 function interiorPoints(C::Polymake.BigObjectAllocated)
     rayMatrix=Array(Polymake.common.primitive(C.RAYS))
     l=size(rayMatrix,1)
@@ -800,7 +809,6 @@ julia> minimalByLex(A)
 [ 0 ,  5 ,  4 ]
 ```
 """
-
 function minimalByLex(A::Array{Array{Int64,1},1})
     l=size(A,1)
     minimal=A[1]
@@ -831,7 +839,6 @@ julia> minimalByDist([[0,1,5,7],[3,3,2,2],[8,5,3,6],[2,1,1,10]],[0,1,1,0])
 [ 3 , 3 , 2 , 2 ]
 ```
 """
-
 function minimalByDist(A::Array{Array{Int64,1},1},D::Array{Int64,1})
     l=size(A,1)
     minimal=A[1]
@@ -856,7 +863,6 @@ julia> coneRayDecomposition([1,2,3],[3 5 7; 8 16 9;2 1 3;1 1 1],[2,2,3],[1,1,1,1
 [ 6 ,  5 ,  52 ,  0 ]
 ```
 """
-
 function coneRayDecomposition(cone,rayMatrix,ray,stack)
     stackMatrix=diagm(stack)*rayMatrix # multiply all rays by stack values
     coneRays=rowMinors(stackMatrix,cone) # find the (stackified) rays in the given cone
@@ -1116,6 +1122,8 @@ end
 """
 =========VISUALIZATION FUNCTIONALITY==========
 """
+
+using Plots
 
 """
 
