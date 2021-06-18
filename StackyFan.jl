@@ -97,7 +97,7 @@ julia> encode([1,0,2,5])
 "1,0,2,5"
 ```
 """
-function encode(::Union{Polymake.VectorAllocated{Polymake.Rational},Polymake.VectorAllocated{Polymake.Integer},Vector{Int64}})
+function encode(objects::Union{Polymake.VectorAllocated{Polymake.Rational},Polymake.VectorAllocated{Polymake.Integer},Vector{Int64}})
     return(foldl((x,y) -> string(x, ',', y), objects))
 end
 
@@ -845,6 +845,28 @@ julia> coneMultiplicity(C)
 """
 function coneMultiplicity(C::Polymake.BigObjectAllocated)
     A=Polymake.common.primitive(C.RAYS)
+    M=matrix(ZZ,[fmpz.(y) for y in A])
+    SNF=Nemo.snf(M)
+    mult=1
+    for i in 1:size(SNF,1)
+        mult*=SNF[i,i]
+    end
+    return mult
+end
+        
+"""
+    getMultiplicity(::Array{Int64,1},::Array{Int64,2})
+        
+    Same functionality as coneMultiplicity, but calculates the cone rays as a subset of the columns of a ray matrix rather than from a Polymake cone object.
+        
+# Examples
+```jldoctest StackyFan
+julia> getMultiplicity([1,2],[1 0; 1 2; 1 3])
+2       
+```     
+"""
+function getMultiplicity(cone::Array{Int64,1},rayMatrix::Array{Int64,2})
+    A=rowMinors(rayMatrix,cone)
     M=matrix(ZZ,[fmpz.(y) for y in A])
     SNF=Nemo.snf(M)
     mult=1
