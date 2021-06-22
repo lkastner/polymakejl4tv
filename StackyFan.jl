@@ -53,7 +53,8 @@ function makeStackyFan(
     fan = fulton.NormalToricVariety(INPUT_RAYS=rays, INPUT_CONES=cones)
     
     # Construct the dictionary
-    stack_rays = mapslices(encode, rays, dims=2)
+    
+    stack_rays = mapslices(encode, convert(Array{Int64,2},Array(Polymake.common.primitive(fan.RAYS))), dims=2)
     pairs = map((x,y) -> (x,y), stack_rays, scalars)
     stacks = Dict(pairs)
 

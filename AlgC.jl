@@ -88,7 +88,24 @@ function isRelevant(ray::Array{Int64,1},cone::Array{Int64,1},F::StackyFan)
         return false
     end
 end
+    
+"""
+    toroidalIndex(::Array{Int64,1},::StackyFan,::Dict)
+    
+    Calculates the toroidal index of the given cone of a divisorial stacky fan, or the number of relevant non-divisorial rays. Compare to divisorialIndex().
+    
+# Examples
+julia> F=makeStackyFan([1 0 0; 0 1 0; 1 0 2],[[0,1,2]],[1,2,1]);
 
+julia> div=Dict([1,0,0]=>0,[0,1,0]=>0,[1,0,2]=>0);
+    
+julia> toroidalIndex([1,2,3],F,div)
+3
+julia> div=Dict([1,0,0]=>0,[0,1,0]=>0,[1,0,2]=>1);
+    
+julia> toroidalIndex([1,2,3],F,div)
+2
+"""
 function toroidalIndex(cone::Array{Int64,1},F::StackyFan,div::Dict)
     rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(F.fan.RAYS)))
     slice=slicematrix(rayMatrix)
@@ -106,10 +123,21 @@ function toroidalIndex(cone::Array{Int64,1},F::StackyFan,div::Dict)
 end
     
 """
-    divisorialIndex(::Array{Int64,1},::StackyFan,::Array{Int64,1})
+    divisorialIndex(::Array{Int64,1},::StackyFan,::Dict)
 
     Calculates the divisorial index (defined by Daniel Bergh) of a given cone in a fan with divisorial rays. Specifically, takes the subcone consisting of all relevant non-divisorial rays in a cone, and counts the number of rays that are relevant in that subcone.
 
+# Examples
+julia> F=makeStackyFan([1 0 0; 0 1 0; 1 0 2],[[0,1,2]],[1,2,1]);
+
+julia> div=Dict([1,0,0]=>0,[0,1,0]=>0,[1,0,2]=>0);
+    
+julia> divisorialIndex([1,2,3],F,div)
+3
+julia> div=Dict([1,0,0]=>0,[0,1,0]=>0,[1,0,2]=>1);
+    
+julia> divisorialIndex([1,2,3],F,div)
+1
 """
 function divisorialIndex(cone::Array{Int64,1},F::StackyFan,div::Dict)
     slicedRayMatrix=slicematrix(convert(Array{Int64,2},Array(Polymake.common.primitive(F.fan.RAYS))))
@@ -146,6 +174,12 @@ end
     coneContains(::Array{Int64,1},::Array{Int64,1})
     
     Checks whether every index in the first input is also contained in the second input. 
+    
+# Examples
+julia> coneContains([1,2,3],[1,2,3,4])
+true
+julia> coneContains([1,2,5],[1,2,3,4])
+false
 """
 function coneContains(A::Array{Int64,1},B::Array{Int64,1})
     out=true
@@ -157,6 +191,28 @@ function coneContains(A::Array{Int64,1},B::Array{Int64,1})
     return out
 end
     
+"""
+    minMaxDivisorial(::StackyFan,::Dict)
+    
+    Calculates the maximal divisorial index of all cones in a stacky fan. Each maximal cone of the fan will contain at most one minimal subcone of maximal divisorial index; a list of such cones is returned.
+
+# Examples
+```jldoctest AlgC
+julia> F=makeStackyFan([1 2 0;1 3 0; 3 0 1],[[0,1,2]],[1,1,5]);
+    
+julia> div=Dict([1,2,0]=>0,[1,3,0]=>0,[3,0,1]=>0);
+    
+julia> minMaxDivisorial(F,div)
+[[3]]
+    
+julia> F=makeStackyFan([1 1 0;1 3 0; 3 0 1],[[0,1,2]],[1,1,5]);
+
+julia> div=Dict([1,1,0]=>0,[1,3,0]=>0,[3,0,1]=>0);
+    
+julia> minMaxDivisorial(F,div)
+[[1,2,3]]
+    
+""" 
 function minMaxDivisorial(F::StackyFan,div::Dict)
     divMax=0
     coneList=getCones(F.fan)
@@ -180,76 +236,124 @@ function minMaxDivisorial(F::StackyFan,div::Dict)
     divMaxConesRefined=Array{Int64,1}[]
     maxconeList=convertIncidenceMatrix(F.fan.MAXIMAL_CONES)
     for maxcone in maxconeList
-        maxconeContains=Array{Int64,1}[]
-        mincone=maxcone
-        for cone in divMaxCones
-            if coneContains(cone,maxcone)==true
-                if size(cone,1)<size(mincone,1)
-                    mincone=cone
+        if divisorialDict[maxcone]==divMax
+            maxconeContains=Array{Int64,1}[]
+            mincone=maxcone
+            for cone in divMaxCones
+                if coneContains(cone,maxcone)==true
+                    if size(cone,1)<size(mincone,1)
+                        mincone=cone
+                    end
                 end
             end
-        end
-        if !(mincone in divMaxConesRefined)
-            push!(divMaxConesRefined,mincone)
+            if !(mincone in divMaxConesRefined)
+                push!(divMaxConesRefined,mincone)
+            end
         end
     end
     return divMaxConesRefined
 end
     
+"""
+    BerghC(::StackyFan,::Array{Int64,1})
+    
+    Takes a stacky fan and a binary array indicating which rays are divisorial, and runs Daniel Bergh's algorithm C. This algorithm performs a series of stacky blowups to reduce the maximal divisorial index of the fan, and returns a fan with a maximal divisorial index of 0.
+
+# Examples
+```jldoctest AlgC
+julia> F=makeStackyFan([1 1 0;1 3 0; 0 0 1],[[0,1,2]],[1,1,5]);
+    
+julia> H, div = BerghC(F,[0,0,0]);
+    
+julia> convert(Array{Int64,2},Polymake.common.primitive(H.fan.RAYS))
+5×3 Matrix{Int64}:
+ 1  1  0
+ 0  0  1
+ 2  4  5
+ 1  3  0
+ 1  2  0
+
+julia> div
+Dict{Any, Any} with 5 entries:
+  [1, 1, 0] => 0
+  [0, 0, 1] => 1
+  [2, 4, 5] => 1
+  [1, 2, 0] => 1
+  [1, 3, 0] => 0
+""" 
 function BerghC(F::StackyFan,divlist::Array{Int64,1})
     X=deepcopy(F)
-    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(F.fan.RAYS)))
-    slicedRayMatrix=slicematrix(convert(Array{Int64,2},Array(Polymake.common.primitive(F.fan.RAYS))))
+    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.fan.RAYS)))
+    slicedRayMatrix=slicematrix(rayMatrix)
     div=Dict()
     for i in 1:size(slicedRayMatrix,1)
         div[slicedRayMatrix[i]]=divlist[i]
     end
-    subdivTargetCones=minMaxDivisorial(F,div)
-    blowupList=Array{Array{Int64,1},1}[]
-    for cone in subdivTargetCones
-        push!(blowupList,slicematrix(rowMinors(rayMatrix,cone)))
-    end
-    for raycone in blowupList
-        indices=Int64[]
-        slicedRayMatrix=slicematrix(convert(Array{Int64,2},Array(Polymake.common.primitive(F.fan.RAYS))))
-        for ray in raycone
-            push!(indices,findall(x->x==ray,slicedRayMatrix)[1])
+    while(true)
+        rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.fan.RAYS)))
+        slicedRayMatrix=slicematrix(rayMatrix)
+        subdivTargetCones=minMaxDivisorial(X,div)
+        if subdivTargetCones==nothing
+            break
         end
-        cone=sort(indices)
-        if size(cone,1)==1
-            div[slicedRayMatrix[cone[1]]]=1
-        else
-            exceptional=findStackyBarycenter(cone,X)
-            X=stackyBlowup(X,[x-1 for x in cone], exceptional) 
-            div[exceptional]=1
+        blowupList=Array{Array{Int64,1},1}[]
+        for cone in subdivTargetCones
+            push!(blowupList,slicematrix(rowMinors(rayMatrix,cone)))
+        end
+        for raycone in blowupList
+            indices=Int64[]
+            slicedRayMatrix=slicematrix(convert(Array{Int64,2},Array(Polymake.common.primitive(X.fan.RAYS))))
+            for ray in raycone
+                push!(indices,findall(x->x==ray,slicedRayMatrix)[1])
+            end
+            cone=sort(indices)
+            if size(cone,1)==1
+                div[slicedRayMatrix[cone[1]]]=1
+            else
+                exceptional=findStackyBarycenter(cone,X)
+                X=stackyBlowup(X,[x-1 for x in cone], exceptional)
+                primExcep=Array{Int64,1}(Polymake.common.primitive(exceptional))
+                div[primExcep]=1
+            end
         end
     end
-    return X
+    return X, div
 end
-    
+
+"""
+    BerghC(::StackyFan,::Dict)
+
+    Functions identically to the previous BerghC method, but takes a dictionary that assigns 0 or 1 to the rays of the input fan to indicate divisoriality. In the previous BerghC method, this dictionary is computed.
+
+"""
 function BerghC(F::StackyFan,div::Dict)
     X=deepcopy(F)
-    rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(F.fan.RAYS)))
-    slicedRayMatrix=slicematrix(convert(Array{Int64,2},Array(Polymake.common.primitive(F.fan.RAYS))))
-    subdivTargetCones=minMaxDivisorial(F,div)
-    blowupList=Set[]
-    for cone in subdivTargetCones
-        push!(blowupList,slicematrix(rowMinors(rayMatrix,cone)))
-    end
-    for raycone in blowupList
-        indices=Int64[]
-        slicedRayMatrix=slicematrix(convert(Array{Int64,2},Array(Polymake.common.primitive(F.fan.RAYS))))
-        for ray in raycone
-            push!(indices,findall(x->x==ray,slicedRayMatrix)[1])
+    while(true)
+        rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(X.fan.RAYS)))
+        slicedRayMatrix=slicematrix(rayMatrix)
+        subdivTargetCones=minMaxDivisorial(F,div)
+        if subdivTargetCones==nothing
+            break
         end
-        cone=sort(indices)
-        if size(cone,1)==1
-            div[slicedRayMatrix[cone[1]]]=1
-        else
-            exceptional=findStackyBarycenter(cone,X)
-            X=stackyBlowup(X,[x-1 for x in cone], exceptional) 
-            div[exceptional]=1
+        blowupList=Set[]
+        for cone in subdivTargetCones
+            push!(blowupList,slicematrix(rowMinors(rayMatrix,cone)))
+        end
+        for raycone in blowupList
+            indices=Int64[]
+            slicedRayMatrix=slicematrix(convert(Array{Int64,2},Array(Polymake.common.primitive(X.fan.RAYS))))
+            for ray in raycone
+                push!(indices,findall(x->x==ray,slicedRayMatrix)[1])
+            end
+            cone=sort(indices)
+            if size(cone,1)==1
+                div[slicedRayMatrix[cone[1]]]=1
+            else
+                exceptional=findStackyBarycenter(cone,X)
+                X=stackyBlowup(X,[x-1 for x in cone], exceptional) 
+                div[exceptional]=1
+            end
         end
     end
-    return X
+    return X, div
 end
