@@ -1,19 +1,21 @@
 include("StackyFan.jl")
 
-function remove!(a, item)
-    return deleteat!(a, findall(x->x==item, a))
+function remove(a, item)
+    # Removes all instances of the item from the list.
+    return filter(x -> x != item, a)
 end
     
 function getIndex(ray::Array{Int64,1},rayMatrix::Array{Int64,2})
+    # Finds the first instance of a row in a given matrix
     slice=slicematrix(rayMatrix)
-    index=findall(x->x==ray,slice)
-    return index[1]
+    index=findfirst(x->x==ray,slice)
+    return index
 end
     
 """
     isIndependent(::Int64,::Array{Int64,1},::Array{Int64,2})
 
-    Takes a ray matrix, a list of indices representing a cone, and an index represeting a ray of that cone. Determines whether the given ray is independent in the cone (i.e. does not contribute to the multiplicity of the cone).
+    Takes a ray matrix, a list of indices representing a cone, and an index representing a ray of that cone. Determines whether the given ray is independent in the cone (i.e. does not contribute to the multiplicity of the cone).
 
 # Examples
 ```jldoctest AlgC
@@ -28,15 +30,12 @@ function isIndependent(rayIndex::Int64,cone::Array{Int64,1},rayMatrix::Array{Int
     if size(cone,1)==1
         return true
     end
-    scone=copy(cone)
-    subcone=remove!(scone,rayIndex)
+    # Create the subcone not containing the selected ray
+    subcone=remove(cone,rayIndex)
+    # Check whether the multiplicities remain equal
     mult=getMultiplicity(cone,rayMatrix)
     submult=getMultiplicity(subcone,rayMatrix)
-    if mult==submult
-        return true
-    else
-        return false
-    end
+    return mult == submult
 end
     
 """
@@ -45,19 +44,20 @@ end
     Returns the number of non-independent rays in a cone. Input in indices-ray matrix format.
 
 # Examples
-```jldoctest
+```jldoctest AlgC
 julia> independencyIndex([1,2,3],[1 0 0 ; 1 2 0; 2 0 3; 0 0 5])
 2
 ```
 """
 function independencyIndex(cone::Array{Int64,1},rayMatrix::Array{Int64,2})
-    index=0
-    for elt in cone
-        if isIndependent(elt,cone,rayMatrix)==false
-            index+=1
-        end
-    end
-    return index
+    return count(elt -> !isIndependent(elt, cone, rayMatrix), cone)
+    #index=0
+    #for elt in cone
+    #    if isIndependent(elt,cone,rayMatrix)==false
+    #        index+=1
+    #    end
+    #end
+    #return index
 end
     
 """
@@ -76,17 +76,14 @@ julia> F=makeStackyFan([1 0 0; 0 1 0; 0 0 1],[[0,1,2]],[1,1,2]);
 
 julia> isRelevant([0,1,0],[1,2,3],F)
 false
+```
 """
 function isRelevant(ray::Array{Int64,1},cone::Array{Int64,1},F::StackyFan)
     rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(F.fan.RAYS)))
     rayStack=F.stacks[encode(ray)]
     rayIndex=getIndex(ray,rayMatrix)
     rayIndependent=isIndependent(rayIndex,cone,rayMatrix)
-    if rayStack != 1 || rayIndependent == false
-        return true
-    else
-        return false
-    end
+    return (rayStack != 1 || rayIndependent == false)
 end
     
 """
@@ -95,6 +92,7 @@ end
     Calculates the toroidal index of the given cone of a divisorial stacky fan, or the number of relevant non-divisorial rays. Compare to divisorialIndex().
     
 # Examples
+```jldoctest AlgC
 julia> F=makeStackyFan([1 0 0; 0 1 0; 1 0 2],[[0,1,2]],[1,2,1]);
 
 julia> div=Dict([1,0,0]=>0,[0,1,0]=>0,[1,0,2]=>0);
@@ -105,20 +103,22 @@ julia> div=Dict([1,0,0]=>0,[0,1,0]=>0,[1,0,2]=>1);
     
 julia> toroidalIndex([1,2,3],F,div)
 2
+```
 """
 function toroidalIndex(cone::Array{Int64,1},F::StackyFan,div::Dict)
     rayMatrix=convert(Array{Int64,2},Array(Polymake.common.primitive(F.fan.RAYS)))
     slice=slicematrix(rayMatrix)
     s=count(x->div[slice[x]]==1,cone)
-    flipt=0
-    for i in cone
-        if div[slice[i]]==0
-            if isRelevant(slice[i],cone,F)==false
-                flipt+=1
-            end
-        end
-    end
-    t=size(cone,1)-flipt
+    notInT=count(i -> div[slice[i]]==0 && !isRelevant(slice[i], cone, F), cone)
+    #flipt=0
+    #for i in cone
+    #    if div[slice[i]]==0
+    #        if isRelevant(slice[i],cone,F)==false
+    #            flipt+=1
+    #        end
+    #    end
+    #end
+    t=size(cone,1)-notInT
     return t-s
 end
     
@@ -128,6 +128,7 @@ end
     Calculates the divisorial index (defined by Daniel Bergh) of a given cone in a fan with divisorial rays. Specifically, takes the subcone consisting of all relevant non-divisorial rays in a cone, and counts the number of rays that are relevant in that subcone.
 
 # Examples
+```jldoctest AlgC
 julia> F=makeStackyFan([1 0 0; 0 1 0; 1 0 2],[[0,1,2]],[1,2,1]);
 
 julia> div=Dict([1,0,0]=>0,[0,1,0]=>0,[1,0,2]=>0);
@@ -138,16 +139,18 @@ julia> div=Dict([1,0,0]=>0,[0,1,0]=>0,[1,0,2]=>1);
     
 julia> divisorialIndex([1,2,3],F,div)
 1
+```
 """
 function divisorialIndex(cone::Array{Int64,1},F::StackyFan,div::Dict)
     slicedRayMatrix=slicematrix(convert(Array{Int64,2},Array(Polymake.common.primitive(F.fan.RAYS))))
     relRes=Array{Int64,1}[]
     relResStack=Int64[]
+    # Find all of the relevant non-divisorial rays in the cone
     c=0
     for i in cone
         ray=slicedRayMatrix[i]
         stack=F.stacks[encode(ray)]
-        if div[ray]==0 && isRelevant(ray,cone,F)==true
+        if div[ray]==0 && isRelevant(ray,cone,F)
             c+=1
             push!(relRes,ray)
             push!(relResStack,stack)
@@ -159,7 +162,9 @@ function divisorialIndex(cone::Array{Int64,1},F::StackyFan,div::Dict)
         relResIndz=[[i-1 for i in 1:c]]
         relResInd=[i for i in 1:c]
         relResCat=Array{Int64}(transpose(hcat(relRes...)))
+        # Create the subcone consisting of the above rays
         subfan=makeStackyFan(relResCat,relResIndz,relResStack)
+        # Counts the number of relevant rays
         divInd=0
         for ray in relRes
             if isRelevant(ray,relResInd,subfan)==true
@@ -176,19 +181,22 @@ end
     Checks whether every index in the first input is also contained in the second input. 
     
 # Examples
+```jldoctest AlgC
 julia> coneContains([1,2,3],[1,2,3,4])
 true
 julia> coneContains([1,2,5],[1,2,3,4])
 false
+```
 """
 function coneContains(A::Array{Int64,1},B::Array{Int64,1})
-    out=true
-    for i in A
-        if !(i in B)
-            out=false
-        end
-    end
-    return out
+    return issubset(A, B)
+    #out=true
+    #for i in A
+    #    if !(i in B)
+    #        out=false
+    #    end
+    #end
+    #return out
 end
     
 """
@@ -211,9 +219,10 @@ julia> div=Dict([1,1,0]=>0,[1,3,0]=>0,[3,0,1]=>0);
     
 julia> minMaxDivisorial(F,div)
 [[1,2,3]]
-    
+```
 """ 
 function minMaxDivisorial(F::StackyFan,div::Dict)
+    # Calculates the maximal divisorial index of any cone in the fan
     divMax=0
     coneList=getCones(F.fan)
     divisorialDict=Dict()
@@ -227,12 +236,15 @@ function minMaxDivisorial(F::StackyFan,div::Dict)
     if divMax==0
         return nothing
     end
+    # Construct the list of all cone of maximal divisorial index
     divMaxCones=Array{Int64,1}[]
     for cone in coneList
         if divisorialDict[cone]==divMax
             push!(divMaxCones,cone)
         end
     end
+    # Find the minimal cone within each maximal cone in the fan
+    # that has maximal divisorial index
     divMaxConesRefined=Array{Int64,1}[]
     maxconeList=convertIncidenceMatrix(F.fan.MAXIMAL_CONES)
     for maxcone in maxconeList
@@ -240,7 +252,7 @@ function minMaxDivisorial(F::StackyFan,div::Dict)
             maxconeContains=Array{Int64,1}[]
             mincone=maxcone
             for cone in divMaxCones
-                if coneContains(cone,maxcone)==true
+                if coneContains(cone,maxcone)
                     if size(cone,1)<size(mincone,1)
                         mincone=cone
                     end
@@ -280,6 +292,7 @@ Dict{Any, Any} with 5 entries:
   [2, 4, 5] => 1
   [1, 2, 0] => 1
   [1, 3, 0] => 0
+```
 """ 
 function BerghC(F::StackyFan,divlist::Array{Int64,1})
     X=deepcopy(F)
